@@ -48,3 +48,4 @@ patterns.env
 .coverage
 htmlcov/
 .tox/
+test_false_positives.py
