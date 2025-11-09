@@ -1,13 +1,9 @@
 """
 Comprehensive local security audit tool.
 
-MAIN ENTRY POINT - Orchestrates all security scanners.
-
-This tool performs multi-layered security analysis:
- - Static file scanning for hardcoded secrets
- - Git history analysis for committed secrets
- - HTTP crawling of localhost applications
- - JavaScript and source map analysis
+Pattern-based secret detection across runtime and version control:
+ - Git history analysis
+ - HTTP crawling & JavaScript analysis
  - Optional browser runtime inspection (Playwright)
  - Optional network packet capture (Scapy)
 
@@ -18,16 +14,11 @@ USAGE:
     --enable-playwright    Enable browser runtime checks
     --enable-pcap         Enable packet capture (requires admin/root)
     --depth N             Maximum pages to crawl (default: 300)
-
-IMPORTANT:
- - Intended for lawful local testing only
- - Do not send raw secrets to cloud services
- - Rotate any discovered credentials immediately
+    --max-commits N       Max commits per git search (default: 100)
 
 Dependencies:
   Required: pip install requests
   Optional: pip install playwright scapy
-           python -m playwright install   # for browser checks
 """
 import os
 import sys
@@ -44,14 +35,10 @@ except ImportError:
     sys.exit(1)
 
 # Import configuration
-from config import SCORE_THRESHOLD, KNOWN_PATTERNS
-
-# Import utility functions
-from utils import extract_string_literals, score_literal
+from config import KNOWN_PATTERNS
 
 # Import all scanners
 from scanners import (
-    scan_files,
     scan_git_history,
     LocalCrawler,
     playwright_inspect,
@@ -120,9 +107,19 @@ def main():
                     help="Packet capture duration in seconds")
     ap.add_argument("--depth", type=int, default=300,
                     help="Maximum pages to crawl")
+    ap.add_argument("--max-commits", type=int, default=100,
+                    help="Maximum total commits to examine in git history (default: 100)")
     args = ap.parse_args()
 
-    root = os.path.abspath(args.root)
+    # Normalize root path: handle both Windows (C:\path) and Unix-style (/c/path) from Git Bash
+    raw_root = args.root
+    # If running in Git Bash on Windows, convert /c/Users/... to C:\Users\...
+    if raw_root.startswith('/') and len(raw_root) > 2 and raw_root[2] == '/':
+        # Looks like /c/path -> convert to C:\path
+        drive_letter = raw_root[1].upper()
+        raw_root = drive_letter + ':' + raw_root[2:].replace('/', '\\')
+    
+    root = os.path.abspath(raw_root)
     target = args.target.rstrip("/")
 
     # Initialize report structure
@@ -145,133 +142,130 @@ def main():
     print(f"Output: {args.out}")
     print("=" * 60)
 
-    # PHASE 1: Static file analysis
-    print("\n[PHASE 1/5] Static File Scan")
+    # PHASE 1: Git history analysis
+    print("\n[PHASE 1/4] Git History Scan")
     print("-" * 60)
-    static_findings = scan_files(root)
-    print(f"✓ Found {len(static_findings)} potential secrets in files")
-    report["findings"].extend(static_findings)
-
-    # PHASE 2: Git history analysis
-    print("\n[PHASE 2/5] Git History Scan")
-    print("-" * 60)
-    git_findings = scan_git_history(root)
-    print(f"✓ Found {len(git_findings)} potential secrets in git history")
+    git_findings = scan_git_history(root, max_commits=args.max_commits)
+    print(f"[OK] Found {len(git_findings)} potential secrets in git history")
     report["findings"].extend(git_findings)
 
-    # PHASE 3: HTTP crawler + JavaScript analysis
-    print(f"\n[PHASE 3/5] Web Crawler ({target})")
+    # PHASE 2: HTTP crawler + JavaScript analysis
+    print(f"\n[PHASE 2/4] Web Crawler ({target})")
     print("-" * 60)
     try:
         crawler = LocalCrawler(target, max_pages=args.depth)
         crawler.probe_common_paths()  # Check for exposed sensitive files
         crawler.crawl()  # Main crawl
-        print(f"✓ Crawled {len(crawler.visited)} pages")
-        print(f"✓ Found {len(crawler.findings)} potential issues")
+        print(f"[OK] Crawled {len(crawler.visited)} pages")
+        print(f"[OK] Found {len(crawler.findings)} potential issues")
         report["findings"].extend(crawler.findings)
     except Exception as e:
-        print(f"✗ Crawler failed: {e}")
+        print(f"[ERROR] Crawler failed: {e}")
         report["crawler_error"] = str(e)
 
-    # PHASE 4: Playwright runtime checks (optional)
-    print("\n[PHASE 4/5] Browser Runtime Checks")
+    # PHASE 3: Playwright runtime checks (optional)
+    print("\n[PHASE 3/4] Browser Runtime Checks")
     print("-" * 60)
     if args.enable_playwright:
         pw = playwright_inspect(target)
         report["playwright"] = pw
         
         if isinstance(pw, dict) and "error" not in pw:
-            print("✓ Playwright inspection complete")
+            print("[OK] Playwright inspection complete")
             
-            # Analyze browser storage for secrets
+            # Pattern match on browser storage
             storage_findings = 0
             
             for k, v in pw.get("localStorage", {}).items():
-                sc, rs, ent = score_literal(str(v), k)
-                if sc >= SCORE_THRESHOLD:
-                    report["findings"].append({
-                        "type": "playwright_localStorage",
-                        "key": k,
-                        "snippet": str(v)[:400],
-                        "score": sc,
-                        "reasons": rs
-                    })
-                    storage_findings += 1
+                val_str = str(v)
+                for name, pat in KNOWN_PATTERNS.items():
+                    try:
+                        match = pat.search(val_str)
+                        if match:
+                            report["findings"].append({
+                                "type": "playwright_localStorage",
+                                "key": k,
+                                "pattern": name,
+                                "snippet": match.group(0)[:400]
+                            })
+                            storage_findings += 1
+                    except Exception:
+                        continue
             
             for k, v in pw.get("sessionStorage", {}).items():
-                sc, rs, ent = score_literal(str(v), k)
-                if sc >= SCORE_THRESHOLD:
-                    report["findings"].append({
-                        "type": "playwright_sessionStorage",
-                        "key": k,
-                        "snippet": str(v)[:400],
-                        "score": sc,
-                        "reasons": rs
-                    })
-                    storage_findings += 1
+                val_str = str(v)
+                for name, pat in KNOWN_PATTERNS.items():
+                    try:
+                        match = pat.search(val_str)
+                        if match:
+                            report["findings"].append({
+                                "type": "playwright_sessionStorage",
+                                "key": k,
+                                "pattern": name,
+                                "snippet": match.group(0)[:400]
+                            })
+                            storage_findings += 1
+                    except Exception:
+                        continue
             
             for c in pw.get("cookies", []):
                 val = c.get("value", "")
-                sc, rs, ent = score_literal(val, c.get("name", ""))
-                if sc >= SCORE_THRESHOLD:
-                    report["findings"].append({
-                        "type": "playwright_cookie",
-                        "cookie": c,
-                        "score": sc,
-                        "reasons": rs
-                    })
-                    storage_findings += 1
+                for name, pat in KNOWN_PATTERNS.items():
+                    try:
+                        match = pat.search(val)
+                        if match:
+                            report["findings"].append({
+                                "type": "playwright_cookie",
+                                "cookie": c,
+                                "pattern": name,
+                                "snippet": match.group(0)[:400]
+                            })
+                            storage_findings += 1
+                    except Exception:
+                        continue
             
-            print(f"✓ Found {storage_findings} suspicious items in browser storage")
+            print(f"[OK] Found {storage_findings} suspicious items in browser storage")
         else:
-            print(f"✗ Playwright failed: {pw.get('error', 'unknown error')}")
+            print(f"[ERROR] Playwright failed: {pw.get('error', 'unknown error')}")
     else:
-        print("⊘ Playwright checks disabled (use --enable-playwright to enable)")
+        print("[SKIP] Playwright checks disabled (use --enable-playwright to enable)")
 
-    # PHASE 5: Packet capture (optional)
-    print("\n[PHASE 5/5] Network Packet Capture")
+    # PHASE 4: Packet capture (optional)
+    print("\n[PHASE 4/4] Network Packet Capture")
     print("-" * 60)
     if args.enable_pcap:
         pc = run_packet_capture(timeout=args.pcap_timeout)
         report["pcap"] = pc
         
         if "error" not in pc:
-            print(f"✓ Captured {pc.get('captured', 0)} packets")
+            print(f"[OK] Captured {pc.get('captured', 0)} packets")
             
-            # Analyze captured payloads for secrets
+            # Pattern match on captured payloads
             pcap_findings = 0
             for entry in pcap_capture_results:
                 payload = entry.get("payload", "")
                 
-                # Check against known patterns
                 for name, pat in KNOWN_PATTERNS.items():
-                    if pat.search(payload):
-                        report["findings"].append({
-                            "type": "pcap_pattern",
-                            "pattern": name,
-                            "payload_snippet": payload[:800]
-                        })
-                        pcap_findings += 1
-                
-                # Extract and score string literals from captured traffic
-                for s, ctx in extract_string_literals(payload):
-                    sc, rs, ent = score_literal(s, ctx)
-                    if sc >= SCORE_THRESHOLD:
-                        report["findings"].append({
-                            "type": "pcap_literal",
-                            "snippet": s[:400],
-                            "score": sc,
-                            "reasons": rs
-                        })
-                        pcap_findings += 1
+                    try:
+                        match = pat.search(payload)
+                        if match:
+                            report["findings"].append({
+                                "type": "pcap_pattern",
+                                "pattern": name,
+                                "snippet": match.group(0)[:400],
+                                "payload_snippet": payload[:800]
+                            })
+                            pcap_findings += 1
+                    except Exception:
+                        continue
             
-            print(f"✓ Found {pcap_findings} suspicious patterns in network traffic")
+            print(f"[OK] Found {pcap_findings} suspicious patterns in network traffic")
         else:
-            print(f"✗ Packet capture failed: {pc.get('message', 'unknown error')}")
+            print(f"[ERROR] Packet capture failed: {pc.get('message', 'unknown error')}")
     else:
-        print("⊘ Packet capture disabled (use --enable-pcap to enable)")
+        print("[SKIP] Packet capture disabled (use --enable-pcap to enable)")
 
-    # PHASE 6: Deduplication
+    # PHASE 5: Deduplication
     print("\n[PROCESSING] Deduplicating findings...")
     uniq = []
     seen = set()
@@ -287,61 +281,62 @@ def main():
             uniq.append(f)
     
     report["findings"] = uniq
-    print(f"✓ Deduplicated {len(report['findings'])} unique findings")
+    print(f"[OK] Deduplicated {len(report['findings'])} unique findings")
 
-    # PHASE 7: Generate summary statistics
+    # PHASE 6: Generate summary statistics
     summary = defaultdict(int)
     for f in report["findings"]:
         summary[f.get("type", "unknown")] += 1
     report["summary"] = dict(summary)
 
-    # PHASE 8: Write JSON report
+    # PHASE 7: Write JSON report
     with open(args.out, "w") as fh:
         json.dump(report, fh, indent=2)
-    print(f"✓ Report written to {args.out}")
+    print(f"[OK] Report written to {args.out}")
 
-    # PHASE 9: Print prioritized console summary
+    # PHASE 8: Print prioritized console summary
     print("\n" + "=" * 60)
     print("AUDIT SUMMARY")
     print("=" * 60)
     
-    # High-confidence findings are those with high scores or known pattern matches
-    high_conf = [
+    # Pattern-based findings
+    pattern_findings = [
         f for f in report["findings"]
-        if f.get("score", 0) >= 3 or
-        f.get("type", "").startswith((
-            "static_known", "js_literal", "header_pattern",
-            "pcap_pattern", "git_match", "exposed_path"
+        if f.get("pattern") or f.get("type", "").startswith((
+            "js_pattern", "header_pattern", "response_pattern",
+            "pcap_pattern", "git_pattern", "sourcemap_pattern",
+            "exposed_path", "playwright_localStorage", 
+            "playwright_sessionStorage", "playwright_cookie"
         ))
     ]
     
     print(f"\nTotal Findings: {len(report['findings'])}")
-    print(f"High Confidence: {len(high_conf)}")
+    print(f"Pattern Matches: {len(pattern_findings)}")
     
     print("\nFindings by Category:")
     for t, c in sorted(report["summary"].items(), key=lambda x: -x[1]):
         print(f"  • {t:25s} {c:4d}")
     
-    if high_conf:
-        print(f"\nTop {min(20, len(high_conf))} High-Confidence Findings:")
+    if pattern_findings:
+        print(f"\nTop {min(20, len(pattern_findings))} Pattern Matches:")
         print("-" * 60)
-        for i, h in enumerate(high_conf[:20], 1):
+        for i, h in enumerate(pattern_findings[:20], 1):
             location = h.get("file") or h.get("url") or h.get("commit", "")
-            detail = h.get("pattern") or ", ".join(h.get("reasons", []))
+            pattern = h.get("pattern", "")
             
             print(f"{i:2d}. [{h.get('type')}]")
             print(f"    Location: {location}")
-            if detail:
-                print(f"    Details:  {detail}")
+            if pattern:
+                print(f"    Pattern:  {pattern}")
             
             snippet = h.get("snippet", "")
             if snippet:
                 preview = snippet[:70] + "..." if len(snippet) > 70 else snippet
-                print(f"    Preview:  {preview}")
+                print(f"    Match:    {preview}")
             print()
     
     print("=" * 60)
-    print("⚠️  SECURITY RECOMMENDATIONS")
+    print("[!] SECURITY RECOMMENDATIONS")
     print("=" * 60)
     print("1. Rotate/revoke any real credentials found immediately")
     print("2. Never commit secrets to version control")

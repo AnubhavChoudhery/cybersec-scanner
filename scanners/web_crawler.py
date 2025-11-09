@@ -1,8 +1,7 @@
 """
 Web crawler for scanning localhost applications.
 
-This module provides an HTTP crawler that discovers and analyzes web pages,
-JavaScript files, and source maps for security vulnerabilities and exposed secrets.
+Crawls web pages and JavaScript files, matching against known secret patterns.
 """
 import urllib.parse
 from collections import deque
@@ -13,8 +12,7 @@ except ImportError:
     print("ERROR: requests library not found. Install with: pip install requests")
     requests = None
 
-from config import PROBE_PATHS, KNOWN_PATTERNS, SOURCE_MAP_RE, JS_URL_RE, SCORE_THRESHOLD
-from utils import extract_string_literals, score_literal
+from config import PROBE_PATHS, KNOWN_PATTERNS, SOURCE_MAP_RE, JS_URL_RE
 
 
 class LocalCrawler:
@@ -141,54 +139,39 @@ class LocalCrawler:
         except Exception:
             return None
 
-    def analyze_text_for_literals(self, text, url):
+    def analyze_text_for_patterns(self, text, url):
         """
-        Analyze text content for suspicious string literals.
-        
-        Extracts quoted strings from the content and scores them for
-        likelihood of being secrets. High-scoring strings are added to findings.
+        Analyze text content for known secret patterns.
         
         Args:
-            text (str): Response body or content to analyze
-            url (str): Source URL for reporting
-            
-        Side Effects:
-            Appends findings to self.findings list
+            text: Response body or content to analyze
+            url: Source URL for reporting
         """
-        for s, ctx in extract_string_literals(text):
-            score, reasons, ent = score_literal(s, ctx)
-            if score >= SCORE_THRESHOLD:
-                self.findings.append({
-                    "type": "response_literal",
-                    "url": url,
-                    "snippet": s[:400],
-                    "score": score,
-                    "reasons": reasons
-                })
+        for name, pat in KNOWN_PATTERNS.items():
+            try:
+                match = pat.search(text)
+                if match:
+                    self.findings.append({
+                        "type": "response_pattern",
+                        "url": url,
+                        "pattern": name,
+                        "snippet": match.group(0)[:400]
+                    })
+            except Exception:
+                continue
 
     def analyze_response(self, url, response):
         """
-        Comprehensive analysis of an HTTP response for security issues.
-        
-        Performs multiple checks:
-        1. Analyzes response body for string literals
-        2. Checks HTTP headers for leaked secrets
-        3. Discovers and analyzes source map files
-        4. Extracts and caches JavaScript files
+        Analyze HTTP response for security issues using pattern matching.
         
         Args:
-            url (str): URL that was fetched
-            response (requests.Response): Response object to analyze
-            
-        Side Effects:
-            - Appends findings to self.findings
-            - May fetch additional resources (source maps)
-            - Caches JS content in self.js_store
+            url: URL that was fetched
+            response: Response object to analyze
         """
         text = response.text if response.text else ""
         
-        # Check response body for suspicious strings
-        self.analyze_text_for_literals(text, url)
+        # Pattern matching on response body
+        self.analyze_text_for_patterns(text, url)
         
         # Check HTTP headers for exposed secrets
         for k, v in response.headers.items():
@@ -211,23 +194,24 @@ class LocalCrawler:
                 mr = self.fetch(map_url)
                 if mr and mr.status_code == 200:
                     try:
-                        # Parse source map JSON
                         jsmap = mr.json()
                         sources = jsmap.get("sourcesContent", []) or []
                         
-                        # Analyze original source code from source maps
+                        # Pattern match on source map content
                         for i, src in enumerate(sources):
-                            for s, ctx in extract_string_literals(src):
-                                score, reasons, ent = score_literal(s, ctx)
-                                if score >= SCORE_THRESHOLD:
-                                    self.findings.append({
-                                        "type": "sourcemap_literal",
-                                        "map": map_url,
-                                        "source_index": i,
-                                        "snippet": s[:400],
-                                        "score": score,
-                                        "reasons": reasons
-                                    })
+                            for name, pat in KNOWN_PATTERNS.items():
+                                try:
+                                    match = pat.search(src)
+                                    if match:
+                                        self.findings.append({
+                                            "type": "sourcemap_pattern",
+                                            "map": map_url,
+                                            "source_index": i,
+                                            "pattern": name,
+                                            "snippet": match.group(0)[:400]
+                                        })
+                                except Exception:
+                                    continue
                     except Exception:
                         continue
             except Exception:
@@ -289,17 +273,19 @@ class LocalCrawler:
                         if rr and rr.status_code == 200:
                             self.js_store[link] = rr.text
                             
-                            # Analyze JavaScript content for hardcoded secrets
-                            for s, ctx in extract_string_literals(rr.text):
-                                score, reasons, ent = score_literal(s, ctx)
-                                if score >= SCORE_THRESHOLD:
-                                    self.findings.append({
-                                        "type": "js_literal",
-                                        "url": link,
-                                        "snippet": s[:400],
-                                        "score": score,
-                                        "reasons": reasons
-                                    })
+                            # Pattern match on JavaScript content
+                            for name, pat in KNOWN_PATTERNS.items():
+                                try:
+                                    match = pat.search(rr.text)
+                                    if match:
+                                        self.findings.append({
+                                            "type": "js_pattern",
+                                            "url": link,
+                                            "pattern": name,
+                                            "snippet": match.group(0)[:400]
+                                        })
+                                except Exception:
+                                    continue
                     else:
                         # Regular page - add to crawl queue
                         self.queue.append(link)

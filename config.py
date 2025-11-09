@@ -1,41 +1,15 @@
 """
 Configuration constants and patterns for the security audit tool.
 
-This module contains all configurable parameters, regex patterns,
-and constants used throughout the security scanning process.
-
-Patterns are loaded from patterns.env to avoid exposing sensitive
-regex signatures in version control.
+Pattern-based secret detection using regex patterns from patterns.env.
 """
 import re
 import os
 from pathlib import Path
 
-# -------- SCORING CONFIGURATION --------
-# These constants control the sensitivity and behavior of the security scanner.
-# Adjust these values to tune false positive rates vs. detection sensitivity.
-
-# Minimum string length (in characters) to be considered as a potential secret
-# Shorter strings are less likely to be meaningful secrets
-# Default: 20 characters (catches most API keys, tokens, passwords)
-MIN_LEN = 20
-
-# Minimum Shannon entropy threshold for flagging high-randomness strings
-# Shannon entropy measures unpredictability (0 = all same char, ~8 = maximum randomness)
-# Secrets typically have high entropy due to random generation
-# Default: 3.5 bits (good balance - regular text ~2.5, random tokens ~4.0+)
-ENTROPY_THRESHOLD = 3.5
-
-# Minimum score threshold for reporting a finding
-# Score is cumulative from multiple heuristics (length, entropy, patterns, context)
-# Lower = more findings but more false positives; Higher = fewer false positives but may miss secrets
-# Default: 2 points (catches most secrets with reasonable FP rate)
-SCORE_THRESHOLD = 2
-
 # -------- FILE SCANNING CONFIGURATION --------
 
 # File extensions to exclude from static analysis (binary/non-text files)
-# Scanning these would waste time and produce garbage results
 EXCLUDE_SUFFIXES = {
     '.png', '.jpg', '.jpeg', '.gif',  # Images
     '.zip', '.tar', '.gz',            # Archives
@@ -142,36 +116,12 @@ def load_patterns_from_env():
 
 
 # Load patterns dynamically from patterns.env
-# This keeps sensitive regex signatures out of the codebase
 KNOWN_PATTERNS = load_patterns_from_env()
 
-# Regex patterns for parsing code and extracting security-relevant information
-
-# STRING_LITERAL_RE: Matches quoted string literals in source code
-# Supports single quotes ('), double quotes ("), and backticks (`)
-# Handles escaped quotes within strings (e.g., "He said \"hello\"")
-# Named groups: q = quote character, s = string content
-STRING_LITERAL_RE = re.compile(r"""(?P<q>['"`])(?P<s>(?:\\.|(?!\1).)*)\1""", re.S)
-
-# ASSIGN_CONTEXT_RE: Detects variable assignments that might contain secrets
-# Matches patterns like:
-#   const apiKey = "..."
-#   let token = "..."
-#   var password = "..."
-#   apiKey: "..."  (object properties)
-#   window.API_KEY = "..."  (global assignments)
-# Captures the variable name for keyword analysis (key, token, secret, etc.)
-ASSIGN_CONTEXT_RE = re.compile(
-    r"""(?:(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*|([A-Za-z0-9_$]+)\s*:\s*|window\.([A-Za-z0-9_$]+)\s*=\s*)['"`]""",
-    re.I
-)
+# Regex patterns for parsing and extracting information
 
 # SOURCE_MAP_RE: Finds source map references in JavaScript files
-# Source maps may contain original source code with unminified secrets
-# Matches: //# sourceMappingURL=app.js.map or //@ sourceMappingURL=...
 SOURCE_MAP_RE = re.compile(r"sourceMappingURL\s*=\s*(?P<url>[\w\-\_\.\/\\]+\.map)")
 
 # JS_URL_RE: Extracts URLs from HTML src/href attributes
-# Used by crawler to discover JavaScript files and linked pages
-# Matches: src="..." or href="..."
 JS_URL_RE = re.compile(r'(?:src|href)=["\']([^"\']+)["\']', re.I)
