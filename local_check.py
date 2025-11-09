@@ -26,6 +26,7 @@ import json
 import time
 import argparse
 from collections import defaultdict
+import logging
 
 # Check for required dependencies
 try:
@@ -107,9 +108,31 @@ def main():
                     help="Packet capture duration in seconds")
     ap.add_argument("--depth", type=int, default=300,
                     help="Maximum pages to crawl")
+    ap.add_argument("--workers", type=int, default=8,
+                    help="Number of crawler worker threads to use (default: 8)")
+    ap.add_argument("--max-js-size", type=int, default=500000,
+                    help="Maximum JS bundle size in bytes to scan (default: 500000)")
+    ap.add_argument("--ignore-header", action='append', default=[],
+                    help="Header name to ignore when scanning headers (repeatable). E.g. --ignore-header ETag")
+    ap.add_argument("--verbose", "-v", action="count", default=0,
+                    help="Increase verbosity: -v INFO, -vv DEBUG")
     ap.add_argument("--max-commits", type=int, default=100,
                     help="Maximum total commits to examine in git history (default: 100)")
     args = ap.parse_args()
+
+    # Configure logging based on verbosity
+    if args.verbose >= 2:
+        level = logging.DEBUG
+    elif args.verbose == 1:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+
+    logging.basicConfig(level=level, format="[%(levelname)s] %(message)s")
+    # Silence noisy third-party libraries so DEBUG focuses on our tool's logs
+    logging.getLogger("charset_normalizer").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
 
     # Normalize root path: handle both Windows (C:\path) and Unix-style (/c/path) from Git Bash
     raw_root = args.root
@@ -153,7 +176,7 @@ def main():
     print(f"\n[PHASE 2/4] Web Crawler ({target})")
     print("-" * 60)
     try:
-        crawler = LocalCrawler(target, max_pages=args.depth)
+        crawler = LocalCrawler(target, max_pages=args.depth, workers=args.workers, ignore_headers=args.ignore_header, max_js_size=args.max_js_size)
         crawler.probe_common_paths()  # Check for exposed sensitive files
         crawler.crawl()  # Main crawl
         print(f"[OK] Crawled {len(crawler.visited)} pages")

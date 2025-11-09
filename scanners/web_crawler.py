@@ -5,6 +5,11 @@ Crawls web pages and JavaScript files, matching against known secret patterns.
 """
 import urllib.parse
 from collections import deque
+import threading
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed, wait
+import os
+import re
+import logging
 
 try:
     import requests
@@ -13,6 +18,39 @@ except ImportError:
     requests = None
 
 from config import PROBE_PATHS, KNOWN_PATTERNS, SOURCE_MAP_RE, JS_URL_RE
+
+
+def _scan_patterns_worker(text, patterns_serialized):
+    """
+    Worker function run in a separate process to apply regex patterns to text.
+
+    Args:
+        text (str): content to scan
+        patterns_serialized (list): list of tuples (name, pattern_str, flags)
+
+    Returns:
+        list of tuples (name, matched_text)
+    """
+    out = []
+    try:
+        for name, pat_str, flags in patterns_serialized:
+            try:
+                pat = re.compile(pat_str, flags)
+            except Exception:
+                # fallback: compile without flags
+                try:
+                    pat = re.compile(pat_str)
+                except Exception:
+                    continue
+            try:
+                m = pat.search(text)
+                if m:
+                    out.append((name, m.group(0)))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
 
 
 class LocalCrawler:
@@ -46,7 +84,7 @@ class LocalCrawler:
         - Sequential crawling (no parallelization)
     """
     
-    def __init__(self, base, timeout=6, same_host_only=True, max_pages=300):
+    def __init__(self, base, timeout=6, same_host_only=True, max_pages=300, workers=8, ignore_headers=None, max_js_size=500_000):
         """
         Initialize the crawler with target configuration.
         
@@ -67,10 +105,38 @@ class LocalCrawler:
         self.timeout = timeout
         self.same_host_only = same_host_only
         self.max_pages = max_pages
+        self.workers = max(1, int(workers))
+        # headers to ignore during header scanning (case-insensitive)
+        if ignore_headers is None:
+            self.ignore_headers = {"etag"}
+        else:
+            self.ignore_headers = {h.lower() for h in ignore_headers}
+        # max JS size (bytes) to scan; skip very large bundles by default
+        self.max_js_size = int(max_js_size)
+
+        # Thread-safe state
+        self._lock = threading.Lock()
         self.visited = set()
         self.queue = deque([self.base + "/"])
         self.findings = []
         self.js_store = {}
+
+        # Pre-serialize patterns for process-pool scanning (pattern string + flags)
+        self.patterns_serialized = [(name, pat.pattern, pat.flags) for name, pat in KNOWN_PATTERNS.items()]
+
+        # Process pool for CPU-bound regex scanning
+        try:
+            cpus = max(1, (os.cpu_count() or 2) - 1)
+        except Exception:
+            cpus = 1
+        self.process_pool = ProcessPoolExecutor(max_workers=cpus)
+
+        # logger for this crawler
+        self.logger = logging.getLogger(__name__)
+        self.logger.debug(
+            "Initialized LocalCrawler(base=%s, timeout=%s, same_host_only=%s, max_pages=%s, workers=%s)",
+            self.base, self.timeout, self.same_host_only, self.max_pages, self.workers
+        )
 
     def is_same_host(self, url):
         """
@@ -109,11 +175,13 @@ class LocalCrawler:
         Any 200 OK responses with non-empty content are flagged as findings.
         This is typically run before the main crawl for quick wins.
         """
+        self.logger.info("Probing common sensitive paths (%d paths)", len(PROBE_PATHS))
         for p in PROBE_PATHS:
             url = urllib.parse.urljoin(self.base + "/", p.lstrip("/"))
             try:
                 r = self.session.get(url, timeout=self.timeout, allow_redirects=True)
                 if r.status_code == 200 and r.text.strip():
+                    self.logger.info("Exposed path found: %s (status=%s)", url, r.status_code)
                     self.findings.append({
                         "type": "exposed_path",
                         "url": url,
@@ -121,6 +189,7 @@ class LocalCrawler:
                         "snippet": r.text[:800]  # First 800 chars for context
                     })
             except Exception:
+                self.logger.debug("Probe failed for %s (expected for many)", url, exc_info=True)
                 pass  # Expected for most paths (404s)
 
     def fetch(self, url):
@@ -135,8 +204,10 @@ class LocalCrawler:
         """
         try:
             r = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+            self.logger.debug("Fetched %s -> %s", url, getattr(r, 'status_code', None))
             return r
         except Exception:
+            self.logger.debug("Fetch failed: %s", url, exc_info=True)
             return None
 
     def analyze_text_for_patterns(self, text, url):
@@ -151,6 +222,7 @@ class LocalCrawler:
             try:
                 match = pat.search(text)
                 if match:
+                    self.logger.info("Pattern match in response: %s @ %s", name, url)
                     self.findings.append({
                         "type": "response_pattern",
                         "url": url,
@@ -173,17 +245,25 @@ class LocalCrawler:
         # Pattern matching on response body
         self.analyze_text_for_patterns(text, url)
         
-        # Check HTTP headers for exposed secrets
+        # Check HTTP headers for exposed secrets, skipping noisy headers
         for k, v in response.headers.items():
-            for name, pat in KNOWN_PATTERNS.items():
-                if pat.search(str(v)):
-                    self.findings.append({
-                        "type": "header_pattern",
-                        "url": url,
-                        "header": k,
-                        "pattern": name,
-                        "value": v
-                    })
+            if k.lower() in self.ignore_headers:
+                continue
+            try:
+                # run lightweight pattern checks in-process for headers
+                sval = str(v)
+                for name, pat in KNOWN_PATTERNS.items():
+                    if pat.search(sval):
+                        self.logger.info("Header pattern match: %s header=%s @ %s", name, k, url)
+                        self.findings.append({
+                            "type": "header_pattern",
+                            "url": url,
+                            "header": k,
+                            "pattern": name,
+                            "value": v
+                        })
+            except Exception:
+                continue
         
         # Look for source map references and analyze them
         for m in SOURCE_MAP_RE.finditer(text):
@@ -199,19 +279,21 @@ class LocalCrawler:
                         
                         # Pattern match on source map content
                         for i, src in enumerate(sources):
-                            for name, pat in KNOWN_PATTERNS.items():
-                                try:
-                                    match = pat.search(src)
-                                    if match:
-                                        self.findings.append({
-                                            "type": "sourcemap_pattern",
-                                            "map": map_url,
-                                            "source_index": i,
-                                            "pattern": name,
-                                            "snippet": match.group(0)[:400]
-                                        })
-                                except Exception:
-                                    continue
+                            try:
+                                # Offload heavy pattern scanning to process pool
+                                fut = self.process_pool.submit(_scan_patterns_worker, src, self.patterns_serialized)
+                                matches = fut.result()
+                                for name, matched in matches:
+                                    self.logger.info("Sourcemap pattern match: %s in %s (source_index=%d)", name, map_url, i)
+                                    self.findings.append({
+                                        "type": "sourcemap_pattern",
+                                        "map": map_url,
+                                        "source_index": i,
+                                        "pattern": name,
+                                        "snippet": matched[:400]
+                                    })
+                            except Exception:
+                                continue
                     except Exception:
                         continue
             except Exception:
@@ -236,56 +318,137 @@ class LocalCrawler:
             Populates self.findings with all discovered issues
         """
         pages = 0
-        
-        while self.queue and pages < self.max_pages:
-            url = self.queue.popleft()
-            
-            # Skip if already visited
-            if url in self.visited:
-                continue
-            
-            # Skip if different host (when same_host_only enabled)
-            if self.same_host_only and not self.is_same_host(url):
-                continue
-            
-            self.visited.add(url)
-            pages += 1
-            
-            # Fetch the page
-            r = self.fetch(url)
-            if not r:
-                continue
-            
-            # Record status
-            self.findings.append({"type": "status", "url": url, "status": r.status_code})
-            
-            # Analyze response for secrets
-            self.analyze_response(url, r)
-            
-            # Extract links and JavaScript files
-            for m in JS_URL_RE.finditer(r.text or ""):
-                link = urllib.parse.urljoin(url, m.group(1))
-                
-                if link not in self.visited:
-                    # Handle JavaScript and source map files specially
+
+        # Worker to fetch and analyze a single URL. Returns new links found.
+        def _process(url):
+            new_links = []
+            try:
+                r = self.fetch(url)
+                if not r:
+                    return new_links
+
+                # record status and analyze response
+                with self._lock:
+                    self.findings.append({"type": "status", "url": url, "status": r.status_code})
+                self.analyze_response(url, r)
+
+                text = r.text or ""
+                # discover JS/source links and regular links
+                for m in JS_URL_RE.finditer(text):
+                    link = urllib.parse.urljoin(url, m.group(1))
                     if link.endswith(".js") or link.endswith(".map"):
-                        rr = self.fetch(link)
-                        if rr and rr.status_code == 200:
-                            self.js_store[link] = rr.text
-                            
-                            # Pattern match on JavaScript content
-                            for name, pat in KNOWN_PATTERNS.items():
-                                try:
-                                    match = pat.search(rr.text)
-                                    if match:
-                                        self.findings.append({
-                                            "type": "js_pattern",
-                                            "url": link,
-                                            "pattern": name,
-                                            "snippet": match.group(0)[:400]
-                                        })
-                                except Exception:
-                                    continue
+                        # Avoid refetching the same JS/map if another worker already fetched it
+                        with self._lock:
+                            cached = self.js_store.get(link)
+                        if cached is not None:
+                            rr_text = cached
+                            self.logger.debug("Using cached JS/map %s", link)
+                        else:
+                            rr = self.fetch(link)
+                            if not rr or rr.status_code != 200:
+                                continue
+                            rr_text = rr.text
+                            with self._lock:
+                                self.js_store[link] = rr_text
+
+                        # Log processing start with size to indicate progress
+                        try:
+                            size = len(rr_text.encode('utf-8'))
+                        except Exception:
+                            size = len(rr_text)
+                        self.logger.info("Processing JS/map: %s (%d bytes)", link, size)
+
+                        # Skip very large JS bundles to avoid long-running scans
+                        if size > self.max_js_size:
+                            self.logger.info("Skipping JS/map %s because size %d > max_js_size %d", link, size, self.max_js_size)
+                            continue
+
+                        # Offload JS pattern matching to the process pool
+                        try:
+                            fut = self.process_pool.submit(_scan_patterns_worker, rr_text, self.patterns_serialized)
+                            matches = fut.result()
+                            for name, matched in matches:
+                                with self._lock:
+                                    self.findings.append({
+                                        "type": "js_pattern",
+                                        "url": link,
+                                        "pattern": name,
+                                        "snippet": matched[:400]
+                                    })
+                                self.logger.info("JS pattern match: %s @ %s", name, link)
+                        except Exception:
+                            self.logger.debug("JS process-pool scanning failed for %s", link, exc_info=True)
                     else:
-                        # Regular page - add to crawl queue
-                        self.queue.append(link)
+                        new_links.append(link)
+            except Exception:
+                pass
+            return new_links
+
+        futures = set()
+        with ThreadPoolExecutor(max_workers=self.workers) as ex:
+            # seed initial tasks up to worker count
+            while True:
+                with self._lock:
+                    if not self.queue or pages >= self.max_pages:
+                        break
+                    # find next candidate URL
+                    try:
+                        url = self.queue.popleft()
+                    except IndexError:
+                        break
+                    if url in self.visited:
+                        continue
+                    if self.same_host_only and not self.is_same_host(url):
+                        continue
+                    self.visited.add(url)
+                    pages += 1
+                futures.add(ex.submit(_process, url))
+
+            # Process completed tasks and keep seeding until limits reached
+            while futures:
+                done, _ = wait(futures, return_when='FIRST_COMPLETED')
+                for f in done:
+                    futures.remove(f)
+                    try:
+                        new_links = f.result() or []
+                    except Exception:
+                        new_links = []
+                    with self._lock:
+                        for nl in new_links:
+                            if self.same_host_only and not self.is_same_host(nl):
+                                continue
+                            if nl not in self.visited and nl not in self.queue and pages < self.max_pages:
+                                self.queue.append(nl)
+
+                    # fill up worker slots
+                    with self._lock:
+                        while self.queue and pages < self.max_pages and len(futures) < self.workers:
+                            try:
+                                nxt = self.queue.popleft()
+                            except IndexError:
+                                break
+                            if nxt in self.visited:
+                                continue
+                            if self.same_host_only and not self.is_same_host(nxt):
+                                continue
+                            self.visited.add(nxt)
+                            pages += 1
+                            futures.add(ex.submit(_process, nxt))
+
+            # drain any remaining futures (safety)
+            for f in as_completed(futures):
+                try:
+                    new_links = f.result() or []
+                except Exception:
+                    new_links = []
+                with self._lock:
+                    for nl in new_links:
+                        if self.same_host_only and not self.is_same_host(nl):
+                            continue
+                        if nl not in self.visited and nl not in self.queue and pages < self.max_pages:
+                            self.queue.append(nl)
+        # Shutdown process pool used for CPU-bound regex scanning
+        try:
+            self.process_pool.shutdown(wait=True)
+        except Exception:
+            pass
