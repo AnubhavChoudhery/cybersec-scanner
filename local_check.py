@@ -44,7 +44,10 @@ from scanners import (
     LocalCrawler,
     playwright_inspect,
     run_packet_capture,
-    pcap_capture_results
+    pcap_capture_results,
+    run_comprehensive_test,
+    run_mitm_proxy,
+    mitm_capture_results
 )
 
 
@@ -104,8 +107,24 @@ def main():
                     help="Enable Playwright browser runtime checks")
     ap.add_argument("--enable-pcap", action="store_true",
                     help="Enable packet capture (requires admin/root)")
-    ap.add_argument("--pcap-timeout", type=int, default=12,
-                    help="Packet capture duration in seconds")
+    ap.add_argument("--pcap-timeout", type=int, default=0,
+                    help="Packet capture duration in seconds (0 = interactive mode, runs until Ctrl+C)")
+    ap.add_argument("--pcap-layer3", action="store_true",
+                    help="Use layer-3 socket capture (no Npcap required on Windows) - less featureful than L2 capture")
+    ap.add_argument("--enable-network-test", action="store_true",
+                    help="Enable comprehensive active security testing (auth, CRUD, rate-limit checks)")
+    ap.add_argument("--test-auth", action="store_true", default=True,
+                    help="Test authentication endpoints (enabled by default with --enable-network-test)")
+    ap.add_argument("--test-crud", action="store_true", default=True,
+                    help="Test CRUD operations (enabled by default with --enable-network-test)")
+    ap.add_argument("--test-rate-limit", action="store_true", default=False,
+                    help="Test rate limiting (disabled by default)")
+    ap.add_argument("--enable-mitm", action="store_true",
+                    help="Enable mitmproxy for HTTPS traffic inspection (requires mitmproxy)")
+    ap.add_argument("--mitm-port", type=int, default=8080,
+                    help="Port for mitmproxy to listen on (default: 8080)")
+    ap.add_argument("--mitm-timeout", type=int, default=0,
+                    help="Mitmproxy duration in seconds (0 = interactive mode, runs until Ctrl+C)")
     ap.add_argument("--depth", type=int, default=300,
                     help="Maximum pages to crawl")
     ap.add_argument("--workers", type=int, default=8,
@@ -254,10 +273,20 @@ def main():
         print("[SKIP] Playwright checks disabled (use --enable-playwright to enable)")
 
     # PHASE 4: Packet capture (optional)
-    print("\n[PHASE 4/4] Network Packet Capture")
+    print("\n[PHASE 4/4] Network Packet Capture & Security Testing")
     print("-" * 60)
+    
+    # Interactive packet capture
     if args.enable_pcap:
-        pc = run_packet_capture(timeout=args.pcap_timeout)
+        # Determine timeout (0 = interactive mode)
+        timeout = None if args.pcap_timeout == 0 else args.pcap_timeout
+        
+        if timeout is None:
+            print("[INFO] Starting interactive packet capture (press Ctrl+C to stop)")
+        else:
+            print(f"[INFO] Starting packet capture for {timeout} seconds")
+        
+        pc = run_packet_capture(timeout=timeout, use_l3=args.pcap_layer3)
         report["pcap"] = pc
         
         if "error" not in pc:
@@ -287,8 +316,128 @@ def main():
             print(f"[ERROR] Packet capture failed: {pc.get('message', 'unknown error')}")
     else:
         print("[SKIP] Packet capture disabled (use --enable-pcap to enable)")
+    
+    # Comprehensive active security testing
+    if args.enable_network_test:
+        print("\n[COMPREHENSIVE SECURITY TESTING]")
+        print("-" * 60)
+        test_report = run_comprehensive_test(
+            args.target,
+            enable_auth=args.test_auth,
+            enable_crud=args.test_crud,
+            enable_rate_limit=args.test_rate_limit
+        )
+        report["network_security_test"] = test_report
+        
+        # Add findings from comprehensive test to main report
+        if "findings" in test_report:
+            for finding in test_report["findings"]:
+                report["findings"].append({
+                    "type": "network_security",
+                    "severity": finding["severity"],
+                    "category": finding["category"],
+                    "description": finding["description"],
+                    "details": finding["details"]
+                })
+    else:
+        print("[SKIP] Comprehensive security testing disabled (use --enable-network-test to enable)")
+    
+    # MITM Proxy for HTTPS inspection
+    if args.enable_mitm:
+        print("\n[MITM PROXY - HTTPS INSPECTION]")
+        print("-" * 60)
+        
+        # Determine timeout (0 = interactive mode)
+        mitm_timeout = None if args.mitm_timeout == 0 else args.mitm_timeout
+        
+        if mitm_timeout is None:
+            print("[INFO] Starting mitmproxy in interactive mode (press Ctrl+C to stop)")
+        else:
+            print(f"[INFO] Starting mitmproxy for {mitm_timeout} seconds")
+        
+        mitm_result = run_mitm_proxy(port=args.mitm_port, duration=mitm_timeout)
+        
+        # Handle None result
+        if mitm_result is None:
+            mitm_result = {
+                "error": "mitm-failed",
+                "message": "MITM proxy returned no result"
+            }
+        
+        report["mitm"] = mitm_result
+        
+        if "error" not in mitm_result:
+            print(f"[OK] MITM captured {mitm_result.get('requests', 0)} requests, {mitm_result.get('responses', 0)} responses")
+            print(f"[OK] Found {len(mitm_result.get('findings', []))} security issues")
+            
+            # Add MITM findings to main report
+            if "findings" in mitm_result:
+                for finding in mitm_result["findings"]:
+                    report["findings"].append({
+                        "type": "mitm_inspection",
+                        "severity": finding["severity"],
+                        "category": finding["category"],
+                        "description": finding["description"],
+                        "context": finding["context"],
+                        "url": finding["url"]
+                    })
+            
+            # Also scan captured traffic for patterns
+            mitm_pattern_findings = 0
+            for entry in mitm_capture_results:
+                # Scan URL
+                if 'url' in entry:
+                    for name, pat in KNOWN_PATTERNS.items():
+                        try:
+                            match = pat.search(entry['url'])
+                            if match:
+                                report["findings"].append({
+                                    "type": "mitm_pattern",
+                                    "pattern": name,
+                                    "snippet": match.group(0)[:400],
+                                    "url": entry['url']
+                                })
+                                mitm_pattern_findings += 1
+                        except Exception:
+                            continue
+                
+                # Scan body
+                if 'body' in entry and isinstance(entry['body'], str):
+                    for name, pat in KNOWN_PATTERNS.items():
+                        try:
+                            match = pat.search(entry['body'])
+                            if match:
+                                report["findings"].append({
+                                    "type": "mitm_pattern",
+                                    "pattern": name,
+                                    "snippet": match.group(0)[:400],
+                                    "context": f"{entry.get('type', 'unknown')} body",
+                                    "url": entry.get('url', 'unknown')
+                                })
+                                mitm_pattern_findings += 1
+                        except Exception:
+                            continue
+            
+            if mitm_pattern_findings > 0:
+                print(f"[OK] Found {mitm_pattern_findings} additional patterns in MITM traffic")
+        else:
+            print(f"[ERROR] MITM proxy failed: {mitm_result.get('message', 'unknown error')}")
+    else:
+        print("[SKIP] MITM proxy disabled (use --enable-mitm to enable)")
 
-    # PHASE 5: Deduplication
+
+    # PHASE 5: Filter out false positives
+    print("\n[PROCESSING] Filtering false positives...")
+    original_count = len(report["findings"])
+    report["findings"] = [
+        f for f in report["findings"]
+        if f.get("type") != "false_positive_catchall"
+    ]
+    filtered_count = original_count - len(report["findings"])
+    if filtered_count > 0:
+        print(f"[OK] Filtered out {filtered_count} false positive catch-all responses")
+
+    # PHASE 6: Deduplication
     print("\n[PROCESSING] Deduplicating findings...")
     uniq = []
     seen = set()
@@ -306,18 +455,18 @@ def main():
     report["findings"] = uniq
     print(f"[OK] Deduplicated {len(report['findings'])} unique findings")
 
-    # PHASE 6: Generate summary statistics
+    # PHASE 7: Generate summary statistics
     summary = defaultdict(int)
     for f in report["findings"]:
         summary[f.get("type", "unknown")] += 1
     report["summary"] = dict(summary)
 
-    # PHASE 7: Write JSON report
+    # PHASE 8: Write JSON report
     with open(args.out, "w") as fh:
         json.dump(report, fh, indent=2)
     print(f"[OK] Report written to {args.out}")
 
-    # PHASE 8: Print prioritized console summary
+    # PHASE 9: Print prioritized console summary
     print("\n" + "=" * 60)
     print("AUDIT SUMMARY")
     print("=" * 60)

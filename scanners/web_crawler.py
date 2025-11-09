@@ -108,7 +108,7 @@ class LocalCrawler:
         self.workers = max(1, int(workers))
         # headers to ignore during header scanning (case-insensitive)
         if ignore_headers is None:
-            self.ignore_headers = {"etag"}
+            self.ignore_headers = {"etag", "server", "date", "content-length"}
         else:
             self.ignore_headers = {h.lower() for h in ignore_headers}
         # max JS size (bytes) to scan; skip very large bundles by default
@@ -120,6 +120,15 @@ class LocalCrawler:
         self.queue = deque([self.base + "/"])
         self.findings = []
         self.js_store = {}
+
+        # Known session/XSRF token cookie names to skip pattern matching (case-insensitive)
+        self.skip_cookie_names = {
+            "_streamlit_xsrf", "sessionid", "session", "csrf_token", "xsrf-token",
+            "ajs_anonymous_id", "ajs_user_id", "_ga", "_gid", "_fbp"
+        }
+
+        # Track probe responses for catch-all detection
+        self.probe_responses = {}
 
         # Pre-serialize patterns for process-pool scanning (pattern string + flags)
         self.patterns_serialized = [(name, pat.pattern, pat.flags) for name, pat in KNOWN_PATTERNS.items()]
@@ -176,13 +185,15 @@ class LocalCrawler:
         This is typically run before the main crawl for quick wins.
         """
         self.logger.info("Probing common sensitive paths (%d paths)", len(PROBE_PATHS))
+        probe_findings = []
         for p in PROBE_PATHS:
             url = urllib.parse.urljoin(self.base + "/", p.lstrip("/"))
             try:
                 r = self.session.get(url, timeout=self.timeout, allow_redirects=True)
                 if r.status_code == 200 and r.text.strip():
+                    self.probe_responses[url] = r.text
                     self.logger.info("Exposed path found: %s (status=%s)", url, r.status_code)
-                    self.findings.append({
+                    probe_findings.append({
                         "type": "exposed_path",
                         "url": url,
                         "status": r.status_code,
@@ -191,6 +202,18 @@ class LocalCrawler:
             except Exception:
                 self.logger.debug("Probe failed for %s (expected for many)", url, exc_info=True)
                 pass  # Expected for most paths (404s)
+        
+        # Detect catch-all responses: if all probes return identical content, it's likely a framework default
+        if probe_findings and len(probe_findings) >= 3:
+            first_response = list(self.probe_responses.values())[0]
+            all_identical = all(resp == first_response for resp in self.probe_responses.values())
+            if all_identical:
+                self.logger.info("Catch-all response detected - all %d probes returned identical content (likely framework default 404)", len(probe_findings))
+                # Mark all probe findings as false positives
+                for finding in probe_findings:
+                    finding["type"] = "false_positive_catchall"
+        
+        self.findings.extend(probe_findings)
 
     def fetch(self, url):
         """
@@ -264,6 +287,29 @@ class LocalCrawler:
                         })
             except Exception:
                 continue
+        
+        # Check cookies for suspicious patterns, but skip known session/XSRF tokens
+        if "set-cookie" in response.headers:
+            for cookie_header in response.headers.getlist("set-cookie") if hasattr(response.headers, "getlist") else [response.headers.get("set-cookie", "")]:
+                # Extract cookie name (format: name=value; ...)
+                try:
+                    cookie_name = cookie_header.split("=")[0].strip().lower()
+                    if cookie_name not in self.skip_cookie_names:
+                        # Pattern match on cookie value
+                        for name, pat in KNOWN_PATTERNS.items():
+                            if pat.search(cookie_header):
+                                self.logger.info("Cookie pattern match: %s in %s @ %s", name, cookie_name, url)
+                                self.findings.append({
+                                    "type": "cookie_pattern",
+                                    "url": url,
+                                    "cookie": cookie_name,
+                                    "pattern": name,
+                                    "snippet": cookie_header[:400]
+                                })
+                    else:
+                        self.logger.debug("Skipping known session/XSRF token: %s", cookie_name)
+                except Exception:
+                    continue
         
         # Look for source map references and analyze them
         for m in SOURCE_MAP_RE.finditer(text):

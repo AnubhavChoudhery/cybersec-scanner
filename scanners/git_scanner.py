@@ -25,16 +25,91 @@ def scan_git_history(root, max_commits=100):
     if not os.path.isdir(git_dir):
         return results
     
-    # Build search terms from known patterns
-    search_terms = {
-        "AKIA": "AWS Access Key",
-        "AIza": "Google API Key",
-        "sk_live_": "Stripe Secret",
-        "sk_test_": "Stripe Test Key",
-        "xox": "Slack Token",
-        "-----BEGIN": "Private Key",
-        "bearer": "Bearer Token",
-    }
+    # Build search terms from KNOWN_PATTERNS - extract known prefixes/markers
+    search_terms = {}
+    
+    # Extract search strings from patterns
+    for name, pattern in KNOWN_PATTERNS.items():
+        pattern_str = pattern.pattern
+        
+        # Extract known prefixes that appear at start of pattern
+        if pattern_str.startswith('AKIA'):
+            search_terms['AKIA'] = name
+        elif pattern_str.startswith('AIza'):
+            search_terms['AIza'] = name
+        elif pattern_str.startswith('sk-'):
+            search_terms['sk-'] = name
+        elif pattern_str.startswith('sk_live_'):
+            search_terms['sk_live_'] = name
+        elif pattern_str.startswith('sk_test_'):
+            search_terms['sk_test_'] = name
+        elif pattern_str.startswith('gsk_'):
+            search_terms['gsk_'] = name
+        elif pattern_str.startswith('hf_'):
+            search_terms['hf_'] = name
+        elif pattern_str.startswith('r8_'):
+            search_terms['r8_'] = name
+        elif pattern_str.startswith('xox'):
+            search_terms['xox'] = name
+        elif pattern_str.startswith('ghp_'):
+            search_terms['ghp_'] = name
+        elif pattern_str.startswith('gho_'):
+            search_terms['gho_'] = name
+        elif pattern_str.startswith('glpat-'):
+            search_terms['glpat-'] = name
+        elif pattern_str.startswith('AC['):
+            search_terms['AC'] = name
+        elif pattern_str.startswith('SK['):
+            search_terms['SK'] = name
+        elif pattern_str.startswith('SG'):
+            search_terms['SG.'] = name
+        elif pattern_str.startswith('key-'):
+            search_terms['key-'] = name
+        elif pattern_str.startswith('sq0'):
+            search_terms['sq0'] = name
+        elif pattern_str.startswith('shpat_'):
+            search_terms['shpat_'] = name
+        elif pattern_str.startswith('eyJ'):
+            search_terms['eyJ'] = name
+        elif pattern_str.startswith('mongodb'):
+            search_terms['mongodb'] = name
+        elif pattern_str.startswith('postgres'):
+            search_terms['postgres'] = name
+        elif pattern_str.startswith('mysql'):
+            search_terms['mysql'] = name
+        elif pattern_str.startswith('redis'):
+            search_terms['redis'] = name
+        elif pattern_str.startswith('https://[a-f0-9]{32}'):
+            search_terms['sentry'] = name
+        elif pattern_str.startswith('[A-Za-z0-9_-]{24}'):
+            search_terms['Discord'] = name
+        elif pattern_str.startswith('[0-9]{8,10}:'):
+            search_terms['Telegram'] = name
+        elif pattern_str.startswith('AAAA'):
+            search_terms['AAAA'] = name
+        elif pattern_str.startswith('EAA'):
+            search_terms['EAA'] = name
+        elif pattern_str.startswith('secret_'):
+            search_terms['secret_'] = name
+        elif pattern_str.startswith('ntn_'):
+            search_terms['ntn_'] = name
+        elif pattern_str.startswith('key['):
+            search_terms['key'] = name
+        elif pattern_str.startswith('pk'):
+            search_terms['pk.'] = name
+        elif pattern_str.startswith('pypi-'):
+            search_terms['pypi-'] = name
+        elif '-----BEGIN' in pattern_str:
+            search_terms['-----BEGIN'] = name
+        elif 'bearer' in pattern_str.lower():
+            search_terms['bearer'] = name
+        elif 'ya29' in pattern_str:
+            search_terms['ya29'] = name
+    
+    # If no search terms extracted, fall back to scanning all patterns
+    if not search_terms:
+        print("  [git] Warning: No search terms extracted from patterns")
+        return results
     
     try:
         commit_count_raw = subprocess.check_output(
@@ -87,24 +162,33 @@ def scan_git_history(root, max_commits=100):
                         stderr=subprocess.DEVNULL
                     )
                     
-                    # Parse diff and validate with actual patterns
-                    for line in diff_output.splitlines():
-                        if search_str.lower() in line.lower():
-                            # Verify with regex patterns
-                            for name, pat in KNOWN_PATTERNS.items():
+                    # Get file path from diff
+                    file_match = re.search(r'\+\+\+ b/(.+)', diff_output)
+                    file_path = file_match.group(1) if file_match else "unknown"
+                    
+                    # Scan entire diff with ALL patterns (not just the search term's pattern)
+                    for name, pat in KNOWN_PATTERNS.items():
+                        for line in diff_output.splitlines():
+                            # Only look at added lines (starting with +)
+                            if line.startswith('+') and not line.startswith('+++'):
                                 match = pat.search(line)
                                 if match:
-                                    file_match = re.search(r'\+\+\+ b/(.+)', diff_output)
-                                    file_path = file_match.group(1) if file_match else "unknown"
-                                    
-                                    results.append({
+                                    # Avoid duplicates
+                                    snippet = match.group(0)[:200]
+                                    finding = {
                                         "type": "git_pattern",
                                         "commit": commit[:12],
                                         "path": file_path,
                                         "pattern": name,
-                                        "snippet": match.group(0)[:200]
-                                    })
-                                    break
+                                        "snippet": snippet
+                                    }
+                                    # Check if this exact finding already exists
+                                    if not any(
+                                        r["commit"] == finding["commit"] and 
+                                        r["snippet"] == finding["snippet"]
+                                        for r in results
+                                    ):
+                                        results.append(finding)
                             
                 except Exception:
                     continue

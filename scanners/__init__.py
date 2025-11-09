@@ -11,7 +11,13 @@ Provides scanners for:
 from .git_scanner import scan_git_history
 from .web_crawler import LocalCrawler
 from .browser_scanner import playwright_inspect
-from .network_scanner import run_packet_capture, pcap_capture_results
+from .network_scanner import (
+    run_packet_capture, 
+    pcap_capture_results, 
+    run_comprehensive_test,
+    run_mitm_proxy,
+    mitm_capture_results
+)
 
 __all__ = [
     'scan_git_history',
@@ -19,4 +25,7 @@ __all__ = [
     'playwright_inspect',
     'run_packet_capture',
     'pcap_capture_results',
+    'run_comprehensive_test',
+    'run_mitm_proxy',
+    'mitm_capture_results',
 ]

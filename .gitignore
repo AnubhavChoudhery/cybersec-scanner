@@ -49,3 +49,4 @@ patterns.env
 htmlcov/
 .tox/
 test_false_positives.py
+test_integration.py
