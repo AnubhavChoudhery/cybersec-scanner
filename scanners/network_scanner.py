@@ -442,13 +442,152 @@ class SecurityInspectorAddon:
                 self.findings.append(finding)
 
 
-def run_mitm_proxy(port=8080, duration=None):
+def auto_install_mitm_cert(proxy_port=8080):
+    """
+    Automatically download and install mitmproxy certificate.
+    Must be run as Administrator/root.
+    
+    Args:
+        proxy_port (int): Port where mitmproxy is running (default: 8080)
+        
+    Returns:
+        dict: Result with success status or error details
+    """
+    import urllib.request
+    import platform
+    
+    system = platform.system()
+    
+    print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}AUTOMATIC CERTIFICATE INSTALLATION{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+    
+    # Check privileges
+    print(f"{Fore.CYAN}[1/4] Checking privileges...{Style.RESET_ALL}")
+    if system == "Windows":
+        try:
+            import ctypes
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+            if not is_admin:
+                print(f"{Fore.RED}  ✗ Administrator privileges required{Style.RESET_ALL}")
+                return {
+                    "error": "insufficient-privileges",
+                    "message": "Run Command Prompt as Administrator"
+                }
+            print(f"{Fore.GREEN}  ✓ Running as Administrator{Style.RESET_ALL}")
+        except:
+            print(f"{Fore.YELLOW}  ⚠ Unable to verify admin privileges{Style.RESET_ALL}")
+    else:
+        if os.geteuid() != 0:
+            print(f"{Fore.RED}  ✗ Root privileges required{Style.RESET_ALL}")
+            return {
+                "error": "insufficient-privileges",
+                "message": "Run with sudo"
+            }
+        print(f"{Fore.GREEN}  ✓ Running as root{Style.RESET_ALL}")
+    
+    # Download certificate
+    print(f"\n{Fore.CYAN}[2/4] Downloading certificate...{Style.RESET_ALL}")
+    proxy = urllib.request.ProxyHandler({
+        'http': f'http://127.0.0.1:{proxy_port}',
+        'https': f'http://127.0.0.1:{proxy_port}'
+    })
+    opener = urllib.request.build_opener(proxy)
+    cert_path = os.path.join(tempfile.gettempdir(), "mitmproxy-ca.cer")
+    
+    try:
+        print(f"  Connecting to mitmproxy on port {proxy_port}...")
+        with opener.open("http://mitm.it/cert/cer", timeout=10) as response:
+            with open(cert_path, 'wb') as f:
+                f.write(response.read())
+        
+        file_size = os.path.getsize(cert_path)
+        print(f"{Fore.GREEN}  ✓ Certificate downloaded ({file_size} bytes){Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.RED}  ✗ Download failed: {e}{Style.RESET_ALL}")
+        return {
+            "error": "cert-download-failed",
+            "message": f"Make sure mitmproxy is running on port {proxy_port}"
+        }
+    
+    # Install certificate
+    print(f"\n{Fore.CYAN}[3/4] Installing certificate...{Style.RESET_ALL}")
+    
+    try:
+        if system == "Windows":
+            print(f"  Installing to Trusted Root Certification Authorities...")
+            result = subprocess.run(
+                ['certutil', '-addstore', 'Root', cert_path],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                print(f"{Fore.RED}  ✗ Installation failed: {result.stderr}{Style.RESET_ALL}")
+                return {"error": "cert-install-failed", "message": result.stderr}
+            
+            print(f"{Fore.GREEN}  ✓ Certificate installed!{Style.RESET_ALL}")
+        
+        elif system == "Linux":
+            dest = "/usr/local/share/ca-certificates/mitmproxy.crt"
+            print(f"  Copying to {dest}...")
+            subprocess.run(['cp', cert_path, dest], check=True)
+            
+            print(f"  Updating certificate store...")
+            subprocess.run(['update-ca-certificates'], check=True)
+            print(f"{Fore.GREEN}  ✓ Certificate installed!{Style.RESET_ALL}")
+        
+        elif system == "Darwin":  # macOS
+            print(f"  Adding to system keychain...")
+            subprocess.run([
+                'security', 'add-trusted-cert',
+                '-d', '-r', 'trustRoot',
+                '-k', '/Library/Keychains/System.keychain',
+                cert_path
+            ], check=True)
+            print(f"{Fore.GREEN}  ✓ Certificate installed!{Style.RESET_ALL}")
+    
+    except Exception as e:
+        print(f"{Fore.RED}  ✗ Installation failed: {e}{Style.RESET_ALL}")
+        return {"error": "cert-install-failed", "message": str(e)}
+    finally:
+        try:
+            os.remove(cert_path)
+        except:
+            pass
+    
+    # Verify
+    print(f"\n{Fore.CYAN}[4/4] Verifying installation...{Style.RESET_ALL}")
+    try:
+        if system == "Windows":
+            verify_result = subprocess.run(
+                ['certutil', '-store', 'Root', 'mitmproxy'],
+                capture_output=True,
+                text=True
+            )
+            if 'mitmproxy' in verify_result.stdout.lower():
+                print(f"{Fore.GREEN}  ✓ Certificate verified in Root store{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}  ⚠ Certificate installed but not found in verification{Style.RESET_ALL}")
+    except:
+        print(f"{Fore.YELLOW}  ⚠ Unable to verify installation{Style.RESET_ALL}")
+    
+    print(f"\n{Fore.GREEN}{'='*60}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✓ CERTIFICATE INSTALLATION COMPLETE!{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}{'='*60}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Note: You may need to restart your browser{Style.RESET_ALL}\n")
+    
+    return {"success": True}
+
+
+def run_mitm_proxy(port=8080, duration=None, auto_install_cert=False):
     """
     Run mitmproxy with the SecurityInspectorAddon as a subprocess.
     
     Args:
         port (int): Port to run the proxy on (default: 8080)
         duration (int): Duration in seconds (None = run until Ctrl+C)
+        auto_install_cert (bool): Automatically install certificate (requires admin/sudo)
         
     Returns:
         dict: Results with findings and captured traffic
@@ -463,19 +602,86 @@ def run_mitm_proxy(port=8080, duration=None):
     print(f"{Fore.GREEN}MITMPROXY HTTPS TRAFFIC INSPECTION{Style.RESET_ALL}")
     print(f"{Fore.GREEN}{'='*60}{Style.RESET_ALL}")
     
+    # Auto-install certificate if requested
+    if auto_install_cert:
+        # First, start a temporary proxy to download cert
+        print(f"\n{Fore.YELLOW}[INFO] Auto-installing certificate (requires admin/sudo)...{Style.RESET_ALL}")
+        
+        # Start temporary mitmdump for cert download
+        temp_process = None
+        try:
+            # Find mitmdump
+            mitmdump_cmd = None
+            python_dir = os.path.dirname(sys.executable)
+            possible_paths = [
+                os.path.join(python_dir, 'mitmdump.exe'),
+                os.path.join(python_dir, 'mitmdump'),
+                'mitmdump',
+                'mitmdump.exe',
+            ]
+            
+            for path in possible_paths:
+                try:
+                    result = subprocess.run([path, '--version'], capture_output=True, timeout=2)
+                    if result.returncode == 0:
+                        mitmdump_cmd = path
+                        break
+                except:
+                    continue
+            
+            if mitmdump_cmd:
+                # Start temporary proxy
+                print(f"{Fore.CYAN}  Starting temporary proxy for cert download...{Style.RESET_ALL}")
+                temp_process = subprocess.Popen(
+                    [mitmdump_cmd, '-p', str(port), '--set', 'stream_large_bodies=1'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                time.sleep(2)  # Wait for proxy to start
+                
+                # Install certificate
+                cert_result = auto_install_mitm_cert(proxy_port=port)
+                
+                # Stop temporary proxy
+                temp_process.terminate()
+                try:
+                    temp_process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    temp_process.kill()
+                
+                if "error" in cert_result:
+                    print(f"{Fore.YELLOW}  ⚠ Auto-install failed: {cert_result.get('message')}{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}  Continuing with manual certificate instructions...{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}  ⚠ Could not find mitmdump for auto-install{Style.RESET_ALL}")
+        
+        except Exception as e:
+            print(f"{Fore.YELLOW}  ⚠ Auto-install error: {e}{Style.RESET_ALL}")
+            if temp_process:
+                try:
+                    temp_process.kill()
+                except:
+                    pass
+    
     if duration:
-        print(f"[*] Starting mitmproxy on port {port} for {duration}s...")
+        print(f"\n[*] Starting mitmproxy on port {port} for {duration}s...")
     else:
-        print(f"[*] Starting mitmproxy on port {port} (interactive mode)...")
+        print(f"\n[*] Starting mitmproxy on port {port} (interactive mode)...")
         print(f"{Fore.YELLOW}[!] Press Ctrl+C to stop proxy and continue scan{Style.RESET_ALL}")
     
     print(f"\n{Fore.CYAN}Configure your browser/application to use proxy:{Style.RESET_ALL}")
     print(f"  HTTP Proxy:  127.0.0.1:{port}")
     print(f"  HTTPS Proxy: 127.0.0.1:{port}")
-    print(f"\n{Fore.CYAN}For HTTPS, install mitmproxy certificate:{Style.RESET_ALL}")
-    print(f"  1. Set proxy in browser")
-    print(f"  2. Visit: http://mitm.it")
-    print(f"  3. Download and install certificate for your system")
+    
+    if not auto_install_cert:
+        print(f"\n{Fore.CYAN}For HTTPS, install mitmproxy certificate:{Style.RESET_ALL}")
+        print(f"  Option 1 (Browser):")
+        print(f"    1. Set proxy in browser")
+        print(f"    2. Visit: http://mitm.it")
+        print(f"    3. Download and install certificate for your system")
+        print(f"  Option 2 (Automated - requires admin/sudo):")
+        print(f"    Run: python install_mitm_cert.py --port {port}")
+    
     print(f"\n{Fore.YELLOW}Waiting for traffic...{Style.RESET_ALL}\n")
     
     # Create addon script file
@@ -1026,7 +1232,7 @@ class ComprehensiveSecurityTester:
         }
 
 
-def run_comprehensive_test(target_url, enable_auth=True, enable_crud=True, enable_rate_limit=False):
+def run_comprehensive_test(target_url, enable_auth=True, enable_crud=True, enable_rate_limit=False, use_proxy=False, proxy_port=8080):
     """
     Run comprehensive security testing on a target URL.
     Called by local_check.py when --enable-network-test is passed.
@@ -1043,7 +1249,7 @@ def run_comprehensive_test(target_url, enable_auth=True, enable_crud=True, enabl
     print(f"\n{Fore.CYAN}Starting comprehensive security testing...{Style.RESET_ALL}")
     print(f"Target: {target_url}")
     
-    tester = ComprehensiveSecurityTester(target_url)
+    tester = ComprehensiveSecurityTester(target_url, use_proxy=use_proxy, proxy_port=proxy_port)
     
     try:
         tester.run_tests(

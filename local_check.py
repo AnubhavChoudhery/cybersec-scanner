@@ -125,6 +125,8 @@ def main():
                     help="Port for mitmproxy to listen on (default: 8080)")
     ap.add_argument("--mitm-timeout", type=int, default=0,
                     help="Mitmproxy duration in seconds (0 = interactive mode, runs until Ctrl+C)")
+    ap.add_argument("--auto-install-cert", action="store_true",
+                    help="Automatically install mitmproxy certificate (requires Administrator/sudo)")
     ap.add_argument("--depth", type=int, default=300,
                     help="Maximum pages to crawl")
     ap.add_argument("--workers", type=int, default=8,
@@ -325,7 +327,9 @@ def main():
             args.target,
             enable_auth=args.test_auth,
             enable_crud=args.test_crud,
-            enable_rate_limit=args.test_rate_limit
+            enable_rate_limit=args.test_rate_limit,
+            use_proxy=args.enable_mitm,
+            proxy_port=args.mitm_port
         )
         report["network_security_test"] = test_report
         
@@ -355,7 +359,11 @@ def main():
         else:
             print(f"[INFO] Starting mitmproxy for {mitm_timeout} seconds")
         
-        mitm_result = run_mitm_proxy(port=args.mitm_port, duration=mitm_timeout)
+        mitm_result = run_mitm_proxy(
+            port=args.mitm_port, 
+            duration=mitm_timeout, 
+            auto_install_cert=args.auto_install_cert
+        )
         
         # Handle None result
         if mitm_result is None:

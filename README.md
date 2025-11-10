@@ -84,6 +84,69 @@ python local_check.py -t http://localhost:5000 --out my_report.json --depth 100
 | `--enable-playwright` | | `False` | Enable browser runtime checks |
 | `--enable-pcap` | | `False` | Enable packet capture (requires root/admin) |
 | `--pcap-timeout` | | `12` | Packet capture duration in seconds |
+| `--enable-mitm` | | `False` | Enable MITM proxy for HTTPS inspection |
+| `--mitm-port` | | `8080` | Port for MITM proxy |
+| `--mitm-timeout` | | `0` | MITM duration (0 = interactive/Ctrl+C) |
+| `--auto-install-cert` | | `False` | Auto-install MITM certificate (requires admin/sudo) |
+
+## MITM Proxy for HTTPS Inspection
+
+The MITM (Man-in-the-Middle) proxy feature allows you to inspect HTTPS traffic from your application in real-time.
+
+### Quick Start
+
+**Windows (as Administrator):**
+```bash
+python local_check.py --target http://localhost:8501 --enable-mitm --auto-install-cert
+```
+
+**Linux/Mac:**
+```bash
+sudo python local_check.py --target http://localhost:8501 --enable-mitm --auto-install-cert
+```
+
+This will:
+1. ✅ Automatically install the mitmproxy certificate
+2. ✅ Start the proxy on port 8080
+3. ✅ Show instructions for configuring your browser
+4. ✅ Capture and analyze all HTTP/HTTPS traffic
+
+### Manual Certificate Installation
+
+If automatic installation doesn't work:
+
+1. Start the scanner:
+   ```bash
+   python local_check.py --target http://localhost:8501 --enable-mitm --mitm-port 8082
+   ```
+
+2. Configure browser proxy to `127.0.0.1:8082`
+
+3. Visit `http://mitm.it` and install certificate
+
+4. Interact with your application
+
+**See [`MITM_SETUP_GUIDE.md`](MITM_SETUP_GUIDE.md) for detailed instructions**
+
+### What Gets Detected
+
+- 🔍 **Passwords in plaintext** - Credentials sent without proper encryption
+- 🔍 **Tokens in URLs** - API keys in query parameters (insecure practice)
+- 🔍 **Credit card numbers** - PCI-sensitive data exposure
+- 🔍 **API keys and secrets** - Leaked credentials in requests/responses
+- 🔍 **Missing security headers** - HSTS, CSP, X-Frame-Options, etc.
+- 🔍 **All custom patterns** - From your `patterns.env` file
+
+### Standalone Certificate Installer
+
+Install certificate separately:
+```bash
+# Start mitmproxy first
+mitmdump -p 8082
+
+# In another terminal (as Administrator/sudo)
+python install_mitm_cert.py --port 8082
+```
 
 ## Scanner Modules
 
