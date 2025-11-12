@@ -85,9 +85,8 @@ python local_check.py -t http://localhost:5000 --out my_report.json --depth 100
 | `--enable-pcap` | | `False` | Enable packet capture (requires root/admin) |
 | `--pcap-timeout` | | `12` | Packet capture duration in seconds |
 | `--enable-mitm` | | `False` | Enable MITM proxy for HTTPS inspection |
-| `--mitm-port` | | `8080` | Port for MITM proxy |
+| `--mitm-port` | | `8082` | Port for MITM proxy |
 | `--mitm-timeout` | | `0` | MITM duration (0 = interactive/Ctrl+C) |
-| `--auto-install-cert` | | `False` | Auto-install MITM certificate (requires admin/sudo) |
 
 ## MITM Proxy for HTTPS Inspection
 
@@ -95,38 +94,28 @@ The MITM (Man-in-the-Middle) proxy feature allows you to inspect HTTPS traffic f
 
 ### Quick Start
 
-**Windows (as Administrator):**
-```bash
-python local_check.py --target http://localhost:8501 --enable-mitm --auto-install-cert
-```
-
-**Linux/Mac:**
-```bash
-sudo python local_check.py --target http://localhost:8501 --enable-mitm --auto-install-cert
-```
-
-This will:
-1. ✅ Automatically install the mitmproxy certificate
-2. ✅ Start the proxy on port 8080
-3. ✅ Show instructions for configuring your browser
-4. ✅ Capture and analyze all HTTP/HTTPS traffic
-
-### Manual Certificate Installation
-
-If automatic installation doesn't work:
-
-1. Start the scanner:
+1. **Start the scanner with MITM enabled:**
    ```bash
-   python local_check.py --target http://localhost:8501 --enable-mitm --mitm-port 8082
+   python local_check.py --target http://localhost:8000 --enable-mitm
    ```
 
-2. Configure browser proxy to `127.0.0.1:8082`
+2. **Configure your backend to use the proxy:**
+   
+   Copy `inject_mitm_proxy_advanced.py` to your backend directory and add ONE line at the top of your main file:
+   
+   ```python
+   import inject_mitm_proxy_advanced  # Must be FIRST import
+   
+   # Continue with your normal imports
+   from fastapi import FastAPI
+   # ... rest of your code
+   ```
 
-3. Visit `http://mitm.it` and install certificate
+3. **Start your backend normally**
 
-4. Interact with your application
+4. **Interact with your application** - All HTTPS requests will be captured
 
-**See [`MITM_SETUP_GUIDE.md`](MITM_SETUP_GUIDE.md) for detailed instructions**
+5. **Press Ctrl+C in scanner terminal** to stop and see results
 
 ### What Gets Detected
 
@@ -137,16 +126,14 @@ If automatic installation doesn't work:
 - 🔍 **Missing security headers** - HSTS, CSP, X-Frame-Options, etc.
 - 🔍 **All custom patterns** - From your `patterns.env` file
 
-### Standalone Certificate Installer
+### How It Works
 
-Install certificate separately:
-```bash
-# Start mitmproxy first
-mitmdump -p 8082
-
-# In another terminal (as Administrator/sudo)
-python install_mitm_cert.py --port 8082
-```
+The `inject_mitm_proxy_advanced.py` module:
+- ✅ Automatically routes all HTTP/HTTPS traffic through the MITM proxy
+- ✅ Patches Python's requests, httpx, and urllib libraries at runtime
+- ✅ Disables SSL verification (dev/test only!)
+- ✅ Works without environment variables or shell configuration
+- ✅ Easy to enable/disable (just comment out the import)
 
 ## Scanner Modules
 
