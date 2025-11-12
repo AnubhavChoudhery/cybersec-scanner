@@ -50,3 +50,9 @@ htmlcov/
 .tox/
 test_false_positives.py
 test_integration.py
+
+# Local test files
+local_check_backup.py
+run_with_mitm.sh
+run_with_mitm.bat
+scanners/network_scanner_backup.py
