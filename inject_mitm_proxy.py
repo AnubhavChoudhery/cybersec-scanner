@@ -27,6 +27,7 @@ import json
 import time
 import threading
 from pathlib import Path
+import logging
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -39,6 +40,10 @@ MONITOR_ONLY = (os.getenv("MITM_MODE", "").lower() == "monitor")
 STATUS_FILE = Path(__file__).parent / "mitm_inject_status.json"
 LOG_FILE = Path(__file__).parent / "mitm_inject.log"
 _lock = threading.Lock()
+
+# Simple terminal logging for visibility
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
+logger = logging.getLogger("mitm_inject")
 
 
 # ============================================
@@ -191,7 +196,20 @@ def _patch_requests_session():
             kwargs.pop("proxies", None)
 
         kwargs.setdefault("timeout", 30)
-        _log_stage("requests_outgoing", {"url": _redact(url)})
+
+        # Terminal visibility: log proxied vs bypassed with uniform stage names
+        try:
+            if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+                msg = f"[MITM] PROXY {method} {_redact(url)} (client=requests)"
+                logger.info(msg)
+                _log_stage("mitm_outbound", {"client": "requests", "method": method, "url": _redact(url)})
+            else:
+                msg = f"[MITM] BYPASS {method} {_redact(url)} (client=requests)"
+                logger.info(msg)
+                _log_stage("mitm_bypass", {"client": "requests", "method": method, "url": _redact(url)})
+        except Exception:
+            pass
+
         return orig_request(self, method, url, **kwargs)
 
     requests.Session.request = _patched_request
@@ -211,6 +229,18 @@ def _patch_httpx():
         if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
             kwargs.setdefault("proxies", MITM_PROXY_URL)
             kwargs["verify"] = False
+        try:
+            if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+                msg = f"[MITM] PROXY {method} {_redact(url)} (client=httpx)"
+                logger.info(msg)
+                _log_stage("mitm_outbound", {"client": "httpx", "method": method, "url": _redact(url)})
+            else:
+                msg = f"[MITM] BYPASS {method} {_redact(url)} (client=httpx)"
+                logger.info(msg)
+                _log_stage("mitm_bypass", {"client": "httpx", "method": method, "url": _redact(url)})
+        except Exception:
+            pass
+
         return orig_req(self, method, url, **kwargs)
 
     httpx.Client.request = _client_req
@@ -232,10 +262,105 @@ def _patch_urllib():
             })
             ctx = ssl._create_unverified_context()
             opener = urllib.request.build_opener(proxy_handler, urllib.request.HTTPSHandler(context=ctx))
+            try:
+                msg = f"[MITM] PROXY OPEN {_redact(url)} (client=urllib)"
+                logger.info(msg)
+                _log_stage("mitm_outbound", {"client": "urllib", "method": "OPEN", "url": _redact(url)})
+            except Exception:
+                pass
             return opener.open(url, data=data, timeout=timeout)
+        try:
+            msg = f"[MITM] BYPASS OPEN {_redact(url)} (client=urllib)"
+            logger.info(msg)
+            _log_stage("mitm_bypass", {"client": "urllib", "method": "OPEN", "url": _redact(url)})
+        except Exception:
+            pass
         return orig_urlopen(url, data=data, timeout=timeout)
 
     urllib.request.urlopen = _patched
+    return True
+
+
+def _patch_urllib3():
+    try:
+        import urllib3
+    except Exception:
+        _log_stage("urllib3_missing")
+        return False
+
+    # Patch PoolManager.request used by many clients
+    try:
+        orig_pool_request = urllib3.PoolManager.request
+
+        def _pm_request(self, method, url, **kwargs):
+            try:
+                if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+                    logger.info(f"[MITM] PROXY {method} {_redact(url)} (client=urllib3)")
+                    _log_stage("mitm_outbound", {"client": "urllib3", "method": method, "url": _redact(url)})
+                else:
+                    logger.info(f"[MITM] BYPASS {method} {_redact(url)} (client=urllib3)")
+                    _log_stage("mitm_bypass", {"client": "urllib3", "method": method, "url": _redact(url)})
+            except Exception:
+                pass
+            return orig_pool_request(self, method, url, **kwargs)
+
+        urllib3.PoolManager.request = _pm_request
+    except Exception:
+        pass
+
+    # Try to patch lower-level connection pool urlopen as well
+    try:
+        orig_conn_urlopen = urllib3.connectionpool.HTTPConnectionPool.urlopen
+
+        def _conn_urlopen(self, method, url, **kwargs):
+            try:
+                full = (getattr(self, 'host', '') and f"https://{self.host}{url}") or url
+                if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(full):
+                    logger.info(f"[MITM] PROXY {method} {_redact(full)} (client=urllib3.conn)")
+                    _log_stage("mitm_outbound", {"client": "urllib3.conn", "method": method, "url": _redact(full)})
+                else:
+                    logger.info(f"[MITM] BYPASS {method} {_redact(full)} (client=urllib3.conn)")
+                    _log_stage("mitm_bypass", {"client": "urllib3.conn", "method": method, "url": _redact(full)})
+            except Exception:
+                pass
+            return orig_conn_urlopen(self, method, url, **kwargs)
+
+        urllib3.connectionpool.HTTPConnectionPool.urlopen = _conn_urlopen
+    except Exception:
+        pass
+
+    return True
+
+
+def _patch_aiohttp():
+    try:
+        import asyncio
+        import aiohttp
+    except Exception:
+        _log_stage("aiohttp_missing")
+        return False
+
+    # Patch ClientSession._request (async)
+    try:
+        orig_req = aiohttp.ClientSession._request
+
+        async def _patched_request(self, method, str_or_url, **kwargs):
+            url = str(str_or_url)
+            try:
+                if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+                    logger.info(f"[MITM] PROXY {method} {_redact(url)} (client=aiohttp)")
+                    _log_stage("mitm_outbound", {"client": "aiohttp", "method": method, "url": _redact(url)})
+                else:
+                    logger.info(f"[MITM] BYPASS {method} {_redact(url)} (client=aiohttp)")
+                    _log_stage("mitm_bypass", {"client": "aiohttp", "method": method, "url": _redact(url)})
+            except Exception:
+                pass
+            return await orig_req(self, method, str_or_url, **kwargs)
+
+        aiohttp.ClientSession._request = _patched_request
+    except Exception:
+        pass
+
     return True
 
 
@@ -293,6 +418,8 @@ def inject_mitm_proxy_advanced():
     if _patch_requests_session(): patched.append("requests")
     if _patch_httpx(): patched.append("httpx")
     if _patch_urllib(): patched.append("urllib")
+    if _patch_urllib3(): patched.append("urllib3")
+    if _patch_aiohttp(): patched.append("aiohttp")
 
     _log_stage("inject_done", {"patched": patched})
     print(f"Patched libraries: {patched}")

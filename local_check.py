@@ -16,17 +16,13 @@ This edition matches:
 
 import os
 import sys
+import os
+import sys
 import json
 import time
 import argparse
 from datetime import datetime
-
-# Add scanners dir to path
-sys.path.insert(0, os.path.dirname(__file__))
-
-# -----------------------------
-# Import Scan Modules (optional-safe)
-# -----------------------------
+from pathlib import Path
 try:
     from scanners.git_scanner import scan_git_history
 except Exception:
@@ -83,8 +79,28 @@ def main():
 
     parser.add_argument("--mitm-port", type=int, default=8082)
     parser.add_argument("--mitm-duration", type=int, help="Auto-stop MITM after N seconds")
+    parser.add_argument("--mitm-status", default=None, help="Path to mitm injector status JSON (overrides default)")
+    parser.add_argument("--mitm-log", default=None, help="Path to mitm injector log file (overrides default)")
 
     args = parser.parse_args()
+
+    # Resolve status/log paths (CLI arg -> ENV -> default in current cwd)
+    if args.mitm_status:
+        STATUS_FILE = Path(args.mitm_status)
+    elif os.getenv('MITM_STATUS_FILE'):
+        STATUS_FILE = Path(os.getenv('MITM_STATUS_FILE'))
+    else:
+        STATUS_FILE = Path.cwd() / "mitm_inject_status.json"
+
+    if args.mitm_log:
+        LOG_FILE = Path(args.mitm_log)
+    elif os.getenv('MITM_LOG_FILE'):
+        LOG_FILE = Path(os.getenv('MITM_LOG_FILE'))
+    else:
+        LOG_FILE = Path.cwd() / "mitm_inject.log"
+
+    print(f"Using MITM status file: {STATUS_FILE}")
+    print(f"Using MITM log file: {LOG_FILE}")
 
     all_findings = []
     stats = {
@@ -243,11 +259,36 @@ def main():
             else:
                 if args.mitm_duration:
                     print(f"{Fore.CYAN}Auto-stopping MITM after {args.mitm_duration}s...{Style.RESET_ALL}")
-                    time.sleep(args.mitm_duration)
+                    # Poll injector status while mitm runs
+                    end = time.time() + args.mitm_duration
+                    last_stage = None
+                    while time.time() < end:
+                        try:
+                            if STATUS_FILE.exists():
+                                with STATUS_FILE.open("r", encoding="utf-8") as sf:
+                                    st = json.load(sf)
+                                    stage = st.get("stage")
+                                    if stage != last_stage:
+                                        print(f"[MITM STATUS] {stage} {st.get('details','')}")
+                                        last_stage = stage
+                        except Exception:
+                            pass
+                        time.sleep(1)
                 else:
                     print(f"{Fore.YELLOW}[!] MITM running — exercise your app then press Ctrl+C{Style.RESET_ALL}")
                     try:
+                        last_stage = None
                         while proc.poll() is None:
+                            try:
+                                if STATUS_FILE.exists():
+                                    with STATUS_FILE.open("r", encoding="utf-8") as sf:
+                                        st = json.load(sf)
+                                        stage = st.get("stage")
+                                        if stage != last_stage:
+                                            print(f"[MITM STATUS] {stage} {st.get('details','')}")
+                                            last_stage = stage
+                            except Exception:
+                                pass
                             time.sleep(1)
                     except KeyboardInterrupt:
                         print(f"{Fore.YELLOW}Stopping MITM...{Style.RESET_ALL}")
@@ -261,6 +302,23 @@ def main():
                     print(f"{Fore.GREEN}[✓] MITM complete{Style.RESET_ALL}")
                     print(f"Requests: {mitm_results.get('requests', 0)}")
                     print(f"Responses: {mitm_results.get('responses', 0)}")
+
+                    # Augment with injector log summary if available
+                    try:
+                        proxied = 0
+                        bypassed = 0
+                        if LOG_FILE.exists():
+                            with LOG_FILE.open("r", encoding="utf-8") as lf:
+                                for line in lf:
+                                    # count uniform stage names emitted by inject_mitm_proxy
+                                    if "mitm_outbound" in line:
+                                        proxied += 1
+                                    if "mitm_bypass" in line:
+                                        bypassed += 1
+                        print(f"Proxied (injector): {proxied}")
+                        print(f"Bypassed (injector): {bypassed}")
+                    except Exception:
+                        pass
 
                 else:
                     print(f"{Fore.YELLOW}[WARN] No MITM results{Style.RESET_ALL}")
