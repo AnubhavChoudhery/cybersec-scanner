@@ -44,6 +44,36 @@ _lock = threading.Lock()
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
 logger = logging.getLogger("mitm_inject")
 
+# Load security patterns
+_patterns = {}
+_patterns_loaded = False
+
+def _load_patterns():
+    global _patterns, _patterns_loaded
+    if _patterns_loaded:
+        return
+    try:
+        import re
+        patterns_file = Path(__file__).parent / "patterns.env"
+        if patterns_file.exists():
+            with patterns_file.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    name, pattern = line.split("=", 1)
+                    try:
+                        _patterns[name.strip()] = re.compile(pattern.strip())
+                    except Exception:
+                        pass
+            print(f"[MITM] Loaded {len(_patterns)} security patterns from {patterns_file}")
+        else:
+            print(f"[MITM] WARNING: patterns.env not found at {patterns_file}")
+        _patterns_loaded = True
+    except Exception as e:
+        print(f"[MITM] ERROR loading patterns: {e}")
+        _patterns_loaded = True
+
 
 # ============================================
 # CLOUD-SAFE BYPASS DEFINITIONS (FINAL VERSION)
@@ -165,6 +195,142 @@ def _redact(url: str) -> str:
         return str(url)[:200]
 
 
+def _looks_like_hash(value: str) -> bool:
+    """Check if value looks like a hash (not plaintext password)"""
+    if not value or len(value) < 8:
+        return False
+    # bcrypt: $2[ab]$...
+    if value.startswith(("$2a$", "$2b$", "$2y$")):
+        return True
+    # argon2: $argon2...
+    if value.startswith("$argon2"):
+        return True
+    # sha256/512: 64/128 hex chars
+    if len(value) in [64, 128] and all(c in "0123456789abcdef" for c in value.lower()):
+        return True
+    # base64-encoded hashes (likely JWT or encrypted)
+    if len(value) > 40 and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=" for c in value):
+        return True
+    return False
+
+
+def _inspect_security(method: str, url: str, client: str, **kwargs):
+    """Lightweight security inspection of request"""
+    _load_patterns()
+    findings = []
+    
+    # Debug: confirm inspection is running
+    if not _patterns_loaded:
+        print(f"[MITM] WARNING: Security patterns not loaded!")
+    
+    # 1. Check URL for embedded credentials or API keys
+    try:
+        parsed = urlparse(str(url))
+        # Check for user:pass@ in URL
+        if parsed.username or parsed.password:
+            findings.append({
+                "severity": "CRITICAL",
+                "type": "url_embedded_credentials",
+                "url": _redact(url),
+                "description": "Credentials embedded in URL (user:pass@domain)"
+            })
+        
+        # Check query params for secrets
+        if parsed.query:
+            for pattern_name, pattern in _patterns.items():
+                if pattern.search(parsed.query):
+                    findings.append({
+                        "severity": "HIGH",
+                        "type": "api_key_in_url",
+                        "pattern": pattern_name,
+                        "url": _redact(url),
+                        "description": f"Potential {pattern_name} in URL query string"
+                    })
+                    break
+    except Exception:
+        pass
+    
+    # 2. Check headers for secrets
+    headers = kwargs.get("headers", {})
+    if headers:
+        # Basic Auth (credentials in base64)
+        auth = headers.get("Authorization", headers.get("authorization", ""))
+        if auth and "Basic" in auth:
+            findings.append({
+                "severity": "CRITICAL",
+                "type": "basic_auth_header",
+                "url": _redact(url),
+                "description": "Basic Authentication (base64 credentials) in header"
+            })
+        
+        # Check for API keys in headers
+        for header_name, header_value in headers.items():
+            if header_name.lower() in ["authorization", "x-api-key", "api-key", "apikey"]:
+                for pattern_name, pattern in _patterns.items():
+                    if pattern.search(str(header_value)):
+                        findings.append({
+                            "severity": "HIGH",
+                            "type": "api_key_in_header",
+                            "pattern": pattern_name,
+                            "header": header_name,
+                            "url": _redact(url),
+                            "description": f"Potential {pattern_name} in header {header_name}"
+                        })
+                        break
+    
+    # 3. Check request body for plaintext passwords and secrets
+    body = kwargs.get("data") or kwargs.get("json")
+    if body:
+        body_str = str(body)
+        
+        # Password fields (context-based)
+        import re
+        password_fields = re.findall(r'["\']?(password|passwd|pwd|user_password|pass)["\']?\s*[:=]\s*["\']?([^"\',}\s]+)', body_str, re.IGNORECASE)
+        for field, value in password_fields:
+            if value and not _looks_like_hash(value) and len(value) > 3:
+                findings.append({
+                    "severity": "CRITICAL",
+                    "type": "plaintext_password",
+                    "field": field,
+                    "url": _redact(url),
+                    "description": f"Plaintext password in field '{field}' (not hashed)"
+                })
+        
+        # Check body against all patterns
+        for pattern_name, pattern in _patterns.items():
+            matches = pattern.findall(body_str)
+            if matches:
+                findings.append({
+                    "severity": "HIGH",
+                    "type": "secret_in_body",
+                    "pattern": pattern_name,
+                    "url": _redact(url),
+                    "description": f"Potential {pattern_name} in request body"
+                })
+    
+    # Write findings to TRAFFIC_LOG with stage=security_finding
+    if findings:
+        with _lock:
+            try:
+                with TRAFFIC_LOG.open("a", encoding="utf-8") as tf:
+                    for finding in findings:
+                        finding.update({
+                            "ts": int(time.time()),
+                            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+                            "method": method,
+                            "client": client,
+                            "stage": "security_finding",
+                        })
+                        json.dump(finding, tf)
+                        tf.write("\n")
+                        # Force console output (print is more reliable than logger)
+                        print(f"🚨 [{finding['severity']}] {finding['description']}")
+            except Exception as e:
+                print(f"[MITM] ERROR writing finding: {e}")
+    
+    return findings
+
+
 # ============================
 # SSL PATCH (for MITM only)
 # ============================
@@ -201,6 +367,12 @@ def _patch_requests_session():
 
         kwargs.setdefault("timeout", 30)
 
+        # Security inspection
+        try:
+            _inspect_security(method, url, "requests", **kwargs)
+        except Exception:
+            pass
+        
         # Terminal visibility and NDJSON logging
         try:
             if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):

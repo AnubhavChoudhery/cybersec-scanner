@@ -79,7 +79,7 @@ def main():
 
     parser.add_argument("--mitm-port", type=int, default=8082)
     parser.add_argument("--mitm-duration", type=int, help="Auto-stop MITM after N seconds")
-    parser.add_argument("--mitm-traffic", default=None, help="Path to mitm traffic NDJSON file (overrides default)")
+    parser.add_argument("--mitm-traffic", default=None, help="Path to mitm traffic NDJSON file (contains traffic + security findings)")
 
     args = parser.parse_args()
 
@@ -330,6 +330,42 @@ def main():
                     print(f"{Fore.GREEN}[✓] Injector traffic parsed{Style.RESET_ALL}")
                     print(f"Proxied (injector): {proxied}")
                     print(f"Bypassed (injector): {bypassed}")
+                    
+                    # Parse security findings from same file (stage=security_finding)
+                    security_count = 0
+                    if TRAFFIC_FILE.exists():
+                        with TRAFFIC_FILE.open("r", encoding="utf-8") as tf:
+                            for line in tf:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                try:
+                                    entry = json.loads(line)
+                                    if entry.get("stage") == "security_finding":
+                                        # Add to all_findings with proper structure
+                                        all_findings.append({
+                                            "type": entry.get("type"),
+                                            "severity": entry.get("severity"),
+                                            "timestamp": entry.get("ts"),
+                                            "timestamp_human": entry.get("timestamp"),
+                                            "description": entry.get("description"),
+                                            "url": entry.get("url"),
+                                            "client": entry.get("client"),
+                                            "method": entry.get("method"),
+                                            "pattern": entry.get("pattern"),
+                                            "field": entry.get("field"),
+                                            "header": entry.get("header"),
+                                        })
+                                        security_count += 1
+                                except json.JSONDecodeError:
+                                    continue
+                    
+                    stats["mitm_security_findings"] = security_count
+                    if security_count > 0:
+                        print(f"{Fore.RED}[!] Security issues found: {security_count}{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.GREEN}[✓] No security issues detected{Style.RESET_ALL}")
+                    
                 except Exception as e:
                     print(f"{Fore.YELLOW}[WARN] Traffic log parse error: {e}{Style.RESET_ALL}")
 
