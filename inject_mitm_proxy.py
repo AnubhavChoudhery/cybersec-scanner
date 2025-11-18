@@ -48,6 +48,17 @@ logger = logging.getLogger("mitm_inject")
 _patterns = {}
 _patterns_loaded = False
 
+# Expected server-side API authentication (suppress console alerts)
+EXPECTED_SERVER_AUTH = {
+    'OPENAI_API_KEY',
+    'ANTHROPIC_API_KEY',
+    'GROQ_API_KEY',
+    'MISTRAL_API_KEY',
+    'HUGGINGFACE_TOKEN',
+    'GITHUB_PAT',
+    'GITLAB_PAT',
+}
+
 def _load_patterns():
     global _patterns, _patterns_loaded
     if _patterns_loaded:
@@ -240,11 +251,11 @@ def _inspect_security(method: str, url: str, client: str, **kwargs):
             for pattern_name, pattern in _patterns.items():
                 if pattern.search(parsed.query):
                     findings.append({
-                        "severity": "HIGH",
+                        "severity": "CRITICAL",
                         "type": "api_key_in_url",
                         "pattern": pattern_name,
                         "url": _redact(url),
-                        "description": f"Potential {pattern_name} in URL query string"
+                        "description": f"API key {pattern_name} exposed in URL query string (logged in browser history, proxy logs, server logs)"
                     })
                     break
     except Exception:
@@ -253,7 +264,7 @@ def _inspect_security(method: str, url: str, client: str, **kwargs):
     # 2. Check headers for secrets
     headers = kwargs.get("headers", {})
     if headers:
-        # Basic Auth (credentials in base64)
+        # Basic Auth (credentials in base64) - ALWAYS critical
         auth = headers.get("Authorization", headers.get("authorization", ""))
         if auth and "Basic" in auth:
             findings.append({
@@ -264,17 +275,31 @@ def _inspect_security(method: str, url: str, client: str, **kwargs):
             })
         
         # Check for API keys in headers
+        parsed = urlparse(str(url))
+        is_https = (parsed.scheme == "https")
+        
         for header_name, header_value in headers.items():
             if header_name.lower() in ["authorization", "x-api-key", "api-key", "apikey"]:
                 for pattern_name, pattern in _patterns.items():
                     if pattern.search(str(header_value)):
+                        # Add context about HTTPS vs HTTP
+                        if is_https and header_name.lower() == "authorization":
+                            severity = "HIGH"
+                            desc = f"{pattern_name} in Authorization header over HTTPS (expected for server-side API calls, review if unexpected)"
+                        elif not is_https:
+                            severity = "CRITICAL"
+                            desc = f"API key {pattern_name} transmitted over insecure HTTP (unencrypted)"
+                        else:
+                            severity = "HIGH"
+                            desc = f"Potential {pattern_name} in header {header_name}"
+                        
                         findings.append({
-                            "severity": "HIGH",
+                            "severity": severity,
                             "type": "api_key_in_header",
                             "pattern": pattern_name,
                             "header": header_name,
                             "url": _redact(url),
-                            "description": f"Potential {pattern_name} in header {header_name}"
+                            "description": desc
                         })
                         break
     
@@ -323,10 +348,103 @@ def _inspect_security(method: str, url: str, client: str, **kwargs):
                         })
                         json.dump(finding, tf)
                         tf.write("\n")
-                        # Force console output (print is more reliable than logger)
-                        print(f"🚨 [{finding['severity']}] {finding['description']}")
+                        # Print HIGH/CRITICAL to console (skip expected server-side auth)
+                        is_expected_auth = (
+                            finding.get('type') == 'api_key_in_header' and
+                            finding.get('pattern') in EXPECTED_SERVER_AUTH and
+                            'expected for server-side' in finding.get('description', '')
+                        )
+                        if finding['severity'] in ['HIGH', 'CRITICAL'] and not is_expected_auth:
+                            print(f"🚨 [{finding['severity']}] {finding['description']}")
             except Exception as e:
                 print(f"[MITM] ERROR writing finding: {e}")
+    
+    return findings
+
+
+def _inspect_response(url: str, response, client: str):
+    """Inspect HTTP response for leaked secrets"""
+    _load_patterns()
+    findings = []
+    
+    try:
+        # 1. Check response headers
+        headers = getattr(response, 'headers', {})
+        if headers:
+            for header_name, header_value in headers.items():
+                for pattern_name, pattern in _patterns.items():
+                    if pattern.search(str(header_value)):
+                        findings.append({
+                            "severity": "CRITICAL",
+                            "type": "secret_in_response_header",
+                            "pattern": pattern_name,
+                            "header": header_name,
+                            "url": _redact(url),
+                            "description": f"Secret {pattern_name} leaked in response header {header_name}"
+                        })
+                        break
+        
+        # 2. Check response body (limit size, skip binary)
+        try:
+            content_type = headers.get('Content-Type', headers.get('content-type', '')) if headers else ''
+            is_text = any(ct in content_type.lower() for ct in ['text/', 'application/json', 'application/xml', 'application/javascript'])
+            
+            if is_text:
+                # Get response text (different methods for different clients)
+                body_text = None
+                if hasattr(response, 'text'):
+                    body_text = response.text if callable(response.text) else str(response.text)
+                elif hasattr(response, 'content'):
+                    try:
+                        body_text = response.content.decode('utf-8', errors='ignore')
+                    except Exception:
+                        pass
+                elif hasattr(response, 'read'):
+                    try:
+                        body_text = response.read().decode('utf-8', errors='ignore')
+                    except Exception:
+                        pass
+                
+                # Limit scan size (500KB max)
+                if body_text and len(body_text) > 0:
+                    scan_text = body_text[:500_000]
+                    
+                    # Pattern match on response body
+                    for pattern_name, pattern in _patterns.items():
+                        matches = pattern.findall(scan_text)
+                        if matches:
+                            findings.append({
+                                "severity": "CRITICAL",
+                                "type": "secret_in_response_body",
+                                "pattern": pattern_name,
+                                "url": _redact(url),
+                                "description": f"Secret {pattern_name} leaked in response body",
+                                "snippet": matches[0][:200] if matches else None
+                            })
+        except Exception:
+            pass
+            
+    except Exception:
+        pass
+    
+    # Write findings to TRAFFIC_LOG
+    if findings:
+        with _lock:
+            try:
+                with TRAFFIC_LOG.open("a", encoding="utf-8") as tf:
+                    for finding in findings:
+                        finding.update({
+                            "ts": int(time.time()),
+                            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+                            "client": client,
+                            "stage": "security_finding",
+                        })
+                        json.dump(finding, tf)
+                        tf.write("\n")
+                        # Always print response leaks (CRITICAL)
+                        print(f"🚨 [{finding['severity']}] {finding['description']}")
+            except Exception as e:
+                print(f"[MITM] ERROR writing response finding: {e}")
     
     return findings
 
@@ -367,7 +485,7 @@ def _patch_requests_session():
 
         kwargs.setdefault("timeout", 30)
 
-        # Security inspection
+        # Security inspection (request)
         try:
             _inspect_security(method, url, "requests", **kwargs)
         except Exception:
@@ -386,7 +504,16 @@ def _patch_requests_session():
         except Exception:
             pass
 
-        return orig_request(self, method, url, **kwargs)
+        # Execute request
+        response = orig_request(self, method, url, **kwargs)
+        
+        # Security inspection (response)
+        try:
+            _inspect_response(url, response, "requests")
+        except Exception:
+            pass
+        
+        return response
 
     requests.Session.request = _patched_request
     return True
@@ -402,8 +529,20 @@ def _patch_httpx():
 
     def _client_req(self, method, url, **kwargs):
         if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
-            kwargs.setdefault("proxies", MITM_PROXY_URL)
+            kwargs.setdefault("proxies", {
+                "http://": MITM_PROXY_URL,
+                "https://": MITM_PROXY_URL,
+            })
             kwargs["verify"] = False
+        
+        kwargs.setdefault("timeout", 30)
+        
+        # Security inspection (request)
+        try:
+            _inspect_security(method, url, "httpx", **kwargs)
+        except Exception:
+            pass
+        
         try:
             if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
                 msg = f"[MITM] PROXY {method} {_redact(url)} (client=httpx)"
@@ -416,7 +555,16 @@ def _patch_httpx():
         except Exception:
             pass
 
-        return orig_req(self, method, url, **kwargs)
+        # Execute request
+        response = orig_req(self, method, url, **kwargs)
+        
+        # Security inspection (response)
+        try:
+            _inspect_response(url, response, "httpx")
+        except Exception:
+            pass
+        
+        return response
 
     httpx.Client.request = _client_req
     return True
@@ -431,6 +579,12 @@ def _patch_urllib():
     orig_urlopen = urllib.request.urlopen
 
     def _patched(url, data=None, timeout=30, **kwargs):
+        # Security inspection (request)
+        try:
+            _inspect_security("OPEN", url, "urllib", data=data, **kwargs)
+        except Exception:
+            pass
+        
         if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
             proxy_handler = urllib.request.ProxyHandler({
                 "http": MITM_PROXY_URL, "https": MITM_PROXY_URL
@@ -443,14 +597,23 @@ def _patch_urllib():
                 _log_traffic("mitm_outbound", {"client": "urllib", "method": "OPEN", "url": _redact(url)})
             except Exception:
                 pass
-            return opener.open(url, data=data, timeout=timeout)
+            response = opener.open(url, data=data, timeout=timeout)
+        else:
+            try:
+                msg = f"[MITM] BYPASS OPEN {_redact(url)} (client=urllib)"
+                logger.info(msg)
+                _log_traffic("mitm_bypass", {"client": "urllib", "method": "OPEN", "url": _redact(url)})
+            except Exception:
+                pass
+            response = orig_urlopen(url, data=data, timeout=timeout)
+        
+        # Security inspection (response)
         try:
-            msg = f"[MITM] BYPASS OPEN {_redact(url)} (client=urllib)"
-            logger.info(msg)
-            _log_traffic("mitm_bypass", {"client": "urllib", "method": "OPEN", "url": _redact(url)})
+            _inspect_response(url, response, "urllib")
         except Exception:
             pass
-        return orig_urlopen(url, data=data, timeout=timeout)
+        
+        return response
 
     urllib.request.urlopen = _patched
     return True
@@ -467,6 +630,12 @@ def _patch_urllib3():
         orig_pool_request = urllib3.PoolManager.request
 
         def _pm_request(self, method, url, **kwargs):
+            # Security inspection (request)
+            try:
+                _inspect_security(method, url, "urllib3", **kwargs)
+            except Exception:
+                pass
+            
             try:
                 if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
                     logger.info(f"[MITM] PROXY {method} {_redact(url)} (client=urllib3)")
@@ -476,7 +645,17 @@ def _patch_urllib3():
                     _log_traffic("mitm_bypass", {"client": "urllib3", "method": method, "url": _redact(url)})
             except Exception:
                 pass
-            return orig_pool_request(self, method, url, **kwargs)
+            
+            # Execute request
+            response = orig_pool_request(self, method, url, **kwargs)
+            
+            # Security inspection (response)
+            try:
+                _inspect_response(url, response, "urllib3")
+            except Exception:
+                pass
+            
+            return response
 
         urllib3.PoolManager.request = _pm_request
     except Exception:
@@ -519,6 +698,13 @@ def _patch_aiohttp():
 
         async def _patched_request(self, method, str_or_url, **kwargs):
             url = str(str_or_url)
+            
+            # Security inspection (request)
+            try:
+                _inspect_security(method, url, "aiohttp", **kwargs)
+            except Exception:
+                pass
+            
             try:
                 if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
                     logger.info(f"[MITM] PROXY {method} {_redact(url)} (client=aiohttp)")
@@ -528,7 +714,17 @@ def _patch_aiohttp():
                     _log_traffic("mitm_bypass", {"client": "aiohttp", "method": method, "url": _redact(url)})
             except Exception:
                 pass
-            return await orig_req(self, method, str_or_url, **kwargs)
+            
+            # Execute request
+            response = await orig_req(self, method, str_or_url, **kwargs)
+            
+            # Security inspection (response) - aiohttp responses need async handling
+            try:
+                _inspect_response(url, response, "aiohttp")
+            except Exception:
+                pass
+            
+            return response
 
         aiohttp.ClientSession._request = _patched_request
     except Exception:
