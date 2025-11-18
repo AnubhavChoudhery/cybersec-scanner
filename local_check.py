@@ -79,28 +79,31 @@ def main():
 
     parser.add_argument("--mitm-port", type=int, default=8082)
     parser.add_argument("--mitm-duration", type=int, help="Auto-stop MITM after N seconds")
-    parser.add_argument("--mitm-status", default=None, help="Path to mitm injector status JSON (overrides default)")
-    parser.add_argument("--mitm-log", default=None, help="Path to mitm injector log file (overrides default)")
+    parser.add_argument("--mitm-traffic", default=None, help="Path to mitm traffic NDJSON file (overrides default)")
 
     args = parser.parse_args()
 
-    # Resolve status/log paths (CLI arg -> ENV -> default in current cwd)
-    if args.mitm_status:
-        STATUS_FILE = Path(args.mitm_status)
-    elif os.getenv('MITM_STATUS_FILE'):
-        STATUS_FILE = Path(os.getenv('MITM_STATUS_FILE'))
+    # Resolve traffic NDJSON path (CLI arg -> ENV -> default based on backend path)
+    if args.mitm_traffic:
+        TRAFFIC_FILE = Path(args.mitm_traffic)
+    elif os.getenv('MITM_TRAFFIC_FILE'):
+        TRAFFIC_FILE = Path(os.getenv('MITM_TRAFFIC_FILE'))
     else:
-        STATUS_FILE = Path.cwd() / "mitm_inject_status.json"
+        # Default: try to find in common backend locations
+        candidates = [
+            Path.cwd() / "mitm_traffic.ndjson",
+            Path.cwd().parent / "Questionnaire_Gen_Prod" / "backend" / "app" / "mitm_traffic.ndjson",
+            Path.cwd().parent / "Questionnaire_Gen_Prod" / "backend" / "mitm_traffic.ndjson",
+        ]
+        TRAFFIC_FILE = None
+        for candidate in candidates:
+            if candidate.exists():
+                TRAFFIC_FILE = candidate
+                break
+        if not TRAFFIC_FILE:
+            TRAFFIC_FILE = candidates[0]  # use first as default
 
-    if args.mitm_log:
-        LOG_FILE = Path(args.mitm_log)
-    elif os.getenv('MITM_LOG_FILE'):
-        LOG_FILE = Path(os.getenv('MITM_LOG_FILE'))
-    else:
-        LOG_FILE = Path.cwd() / "mitm_inject.log"
-
-    print(f"Using MITM status file: {STATUS_FILE}")
-    print(f"Using MITM log file: {LOG_FILE}")
+    print(f"Using MITM traffic file: {TRAFFIC_FILE}")
 
     all_findings = []
     stats = {
@@ -259,69 +262,87 @@ def main():
             else:
                 if args.mitm_duration:
                     print(f"{Fore.CYAN}Auto-stopping MITM after {args.mitm_duration}s...{Style.RESET_ALL}")
-                    # Poll injector status while mitm runs
-                    end = time.time() + args.mitm_duration
-                    last_stage = None
-                    while time.time() < end:
-                        try:
-                            if STATUS_FILE.exists():
-                                with STATUS_FILE.open("r", encoding="utf-8") as sf:
-                                    st = json.load(sf)
-                                    stage = st.get("stage")
-                                    if stage != last_stage:
-                                        print(f"[MITM STATUS] {stage} {st.get('details','')}")
-                                        last_stage = stage
-                        except Exception:
-                            pass
-                        time.sleep(1)
+                    time.sleep(args.mitm_duration)
                 else:
                     print(f"{Fore.YELLOW}[!] MITM running — exercise your app then press Ctrl+C{Style.RESET_ALL}")
                     try:
-                        last_stage = None
                         while proc.poll() is None:
-                            try:
-                                if STATUS_FILE.exists():
-                                    with STATUS_FILE.open("r", encoding="utf-8") as sf:
-                                        st = json.load(sf)
-                                        stage = st.get("stage")
-                                        if stage != last_stage:
-                                            print(f"[MITM STATUS] {stage} {st.get('details','')}")
-                                            last_stage = stage
-                            except Exception:
-                                pass
                             time.sleep(1)
                     except KeyboardInterrupt:
                         print(f"{Fore.YELLOW}Stopping MITM...{Style.RESET_ALL}")
 
                 mitm_results = stop_mitm_dump(proc, results_path)
 
+                # Parse injector traffic NDJSON regardless of mitmproxy results
+                # This ensures we capture traffic even if mitmproxy addon failed
+                try:
+                    proxied = 0
+                    bypassed = 0
+                    traffic_findings = []
+                    
+                    if TRAFFIC_FILE.exists():
+                        with TRAFFIC_FILE.open("r", encoding="utf-8") as tf:
+                                for line in tf:
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    try:
+                                        entry = json.loads(line)
+                                        stage = entry.get("stage")
+                                        
+                                        # Flat structure: client/method/url are at top level
+                                        client = entry.get("client")
+                                        method = entry.get("method")
+                                        url = entry.get("url")
+                                        
+                                        if stage == "mitm_outbound":
+                                            proxied += 1
+                                            # Add to findings for audit report
+                                            traffic_findings.append({
+                                                "type": "mitm_proxied_request",
+                                                "severity": "INFO",
+                                                "timestamp": entry.get("ts"),
+                                                "timestamp_human": entry.get("timestamp"),
+                                                "client": client,
+                                                "method": method,
+                                                "url": url,
+                                                "description": f"Proxied request via MITM: {method} {url} (client={client})"
+                                            })
+                                        elif stage == "mitm_bypass":
+                                            bypassed += 1
+                                            # Optionally add bypasses too (commented by default to reduce noise)
+                                            # traffic_findings.append({
+                                            #     "type": "mitm_bypassed_request",
+                                            #     "severity": "INFO",
+                                            #     "timestamp": entry.get("ts"),
+                                            #     "timestamp_human": entry.get("timestamp"),
+                                            #     "client": client,
+                                            #     "method": method,
+                                            #     "url": url,
+                                            #     "description": f"Bypassed request: {method} {url} (client={client})"
+                                            # })
+                                    except json.JSONDecodeError:
+                                        continue                    # Add traffic findings to all_findings
+                    all_findings.extend(traffic_findings)
+                    stats["mitm_proxied"] = proxied
+                    stats["mitm_bypassed"] = bypassed
+                    
+                    print(f"{Fore.GREEN}[✓] Injector traffic parsed{Style.RESET_ALL}")
+                    print(f"Proxied (injector): {proxied}")
+                    print(f"Bypassed (injector): {bypassed}")
+                except Exception as e:
+                    print(f"{Fore.YELLOW}[WARN] Traffic log parse error: {e}{Style.RESET_ALL}")
+
+                # Now report mitmproxy addon results if available
                 if isinstance(mitm_results, dict) and "error" not in mitm_results:
                     stats["mitm_findings"] = len(mitm_results.get("findings", []))
                     all_findings.extend(mitm_results.get("findings", []))
 
-                    print(f"{Fore.GREEN}[✓] MITM complete{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN}[✓] MITM addon complete{Style.RESET_ALL}")
                     print(f"Requests: {mitm_results.get('requests', 0)}")
                     print(f"Responses: {mitm_results.get('responses', 0)}")
-
-                    # Augment with injector log summary if available
-                    try:
-                        proxied = 0
-                        bypassed = 0
-                        if LOG_FILE.exists():
-                            with LOG_FILE.open("r", encoding="utf-8") as lf:
-                                for line in lf:
-                                    # count uniform stage names emitted by inject_mitm_proxy
-                                    if "mitm_outbound" in line:
-                                        proxied += 1
-                                    if "mitm_bypass" in line:
-                                        bypassed += 1
-                        print(f"Proxied (injector): {proxied}")
-                        print(f"Bypassed (injector): {bypassed}")
-                    except Exception:
-                        pass
-
                 else:
-                    print(f"{Fore.YELLOW}[WARN] No MITM results{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}[WARN] MITM addon produced no results (traffic injector still captured above){Style.RESET_ALL}")
 
         except Exception as e:
             print(f"{Fore.RED}[ERROR] MITM failed: {e}{Style.RESET_ALL}")
