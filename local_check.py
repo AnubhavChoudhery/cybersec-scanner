@@ -327,7 +327,7 @@ def main():
                     stats["mitm_proxied"] = proxied
                     stats["mitm_bypassed"] = bypassed
                     
-                    print(f"{Fore.GREEN}[✓] Injector traffic parsed{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN}[OK] Injector traffic parsed{Style.RESET_ALL}")
                     print(f"Proxied (injector): {proxied}")
                     print(f"Bypassed (injector): {bypassed}")
                     
@@ -364,7 +364,7 @@ def main():
                     if security_count > 0:
                         print(f"{Fore.RED}[!] Security issues found: {security_count}{Style.RESET_ALL}")
                     else:
-                        print(f"{Fore.GREEN}[✓] No security issues detected{Style.RESET_ALL}")
+                        print(f"{Fore.GREEN}[OK] No security issues detected{Style.RESET_ALL}")
                     
                 except Exception as e:
                     print(f"{Fore.YELLOW}[WARN] Traffic log parse error: {e}{Style.RESET_ALL}")
@@ -374,7 +374,7 @@ def main():
                     stats["mitm_findings"] = len(mitm_results.get("findings", []))
                     all_findings.extend(mitm_results.get("findings", []))
 
-                    print(f"{Fore.GREEN}[✓] MITM addon complete{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN}[OK] MITM addon complete{Style.RESET_ALL}")
                     print(f"Requests: {mitm_results.get('requests', 0)}")
                     print(f"Responses: {mitm_results.get('responses', 0)}")
                 else:
@@ -422,7 +422,7 @@ def main():
     with open("audit_report.json", "w") as f:
         json.dump(report, f, indent=2)
 
-    print(f"\n{Fore.GREEN}[✓] Full report saved to audit_report.json{Style.RESET_ALL}\n")
+    print(f"\n{Fore.GREEN}[OK] Full report saved to audit_report.json{Style.RESET_ALL}\n")
 
     # Exit codes
     if severities["CRITICAL"] > 0:

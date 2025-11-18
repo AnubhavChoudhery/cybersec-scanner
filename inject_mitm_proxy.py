@@ -348,14 +348,14 @@ def _inspect_security(method: str, url: str, client: str, **kwargs):
                         })
                         json.dump(finding, tf)
                         tf.write("\n")
-                        # Print HIGH/CRITICAL to console (skip expected server-side auth)
+                        # Only print to console if HIGH/CRITICAL and NOT expected server-side auth
                         is_expected_auth = (
                             finding.get('type') == 'api_key_in_header' and
                             finding.get('pattern') in EXPECTED_SERVER_AUTH and
                             'expected for server-side' in finding.get('description', '')
                         )
                         if finding['severity'] in ['HIGH', 'CRITICAL'] and not is_expected_auth:
-                            print(f"🚨 [{finding['severity']}] {finding['description']}")
+                            print(f"[SECURITY] [{finding['severity']}] {finding['description']}")
             except Exception as e:
                 print(f"[MITM] ERROR writing finding: {e}")
     
@@ -442,7 +442,7 @@ def _inspect_response(url: str, response, client: str):
                         json.dump(finding, tf)
                         tf.write("\n")
                         # Always print response leaks (CRITICAL)
-                        print(f"🚨 [{finding['severity']}] {finding['description']}")
+                        print(f"[SECURITY] [{finding['severity']}] {finding['description']}")
             except Exception as e:
                 print(f"[MITM] ERROR writing response finding: {e}")
     

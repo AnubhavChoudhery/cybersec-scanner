@@ -1,335 +1,669 @@
-# Local Security Audit Tool
+# Web Application Security Audit Tool
 
-A comprehensive security scanner for localhost applications that detects hardcoded secrets, exposed endpoints, and configuration vulnerabilities.
+A comprehensive security scanner for web applications that detects hardcoded secrets, exposed endpoints, configuration vulnerabilities, and runtime security issues. Supports static analysis, git history scanning, web crawling, browser runtime inspection, and HTTPS traffic interception.
 
-## Project Structure
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [MITM Proxy Setup](#mitm-proxy-setup)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Scanner Modules](#scanner-modules)
+- [Output Format](#output-format)
+- [Advanced Usage](#advanced-usage)
+- [Troubleshooting](#troubleshooting)
+
+## Features
+
+### Core Capabilities
+- **Git History Scanning**: Detect secrets in commit history using efficient pickaxe search
+- **Web Crawling**: Discover exposed endpoints, analyze JavaScript files and source maps
+- **Browser Runtime Inspection**: Check localStorage, sessionStorage, cookies, and global variables
+- **HTTPS Traffic Interception**: Real-time inspection of encrypted HTTPS requests and responses
+- **Pattern Matching**: 58+ built-in patterns for AWS, OpenAI, Stripe, GitHub, databases, and more
+
+### Detection Coverage
+
+- API keys and access tokens (AWS, Google Cloud, Azure, OpenAI, Anthropic, Groq, etc.)
+- Database connection strings (MongoDB, PostgreSQL, MySQL, Redis)
+- Payment credentials (Stripe, PayPal, Square)
+- Authentication tokens (JWT, OAuth, Basic Auth)
+- Private keys (RSA, SSH, PGP)
+- Plaintext passwords and weak credentials
+- Secrets in URL query parameters
+- Leaked secrets in HTTP responses
+
+## Architecture
 
 ```
 Chrome_Ext/
-├── local_check.py              # Main entry point - orchestrates all scanners
-├── config.py                   # Configuration constants and regex patterns
-├── utils.py                    # Core utility functions (entropy, scoring, etc.)
-├── scanners/                   # Specialized scanner modules
-│   ├── __init__.py            # Package initialization
-│   ├── static_scanner.py      # File-based secret detection
+├── local_check.py              # Main orchestrator
+├── config.py                   # Configuration and patterns
+├── utils.py                    # Utility functions
+├── patterns.env                # Secret detection patterns (user-configured)
+├── inject_mitm_proxy.py        # MITM proxy injection module
+├── install_mitm_cert.py        # Certificate installation helper
+├── scanners/
 │   ├── git_scanner.py         # Git history analysis
 │   ├── web_crawler.py         # HTTP endpoint scanning
 │   ├── browser_scanner.py     # Playwright runtime inspection
-│   └── network_scanner.py     # Packet capture analysis
-└── local_check_backup.py      # Backup of original monolithic version
+│   └── network_scanner.py     # MITM proxy traffic analysis
+└── audit_report.json          # Output report (generated)
 ```
 
-## Quick Start
+## Installation
 
-### Installation
+### System Requirements
+
+- Python 3.8 or higher
+- Git (for git history scanning)
+- mitmproxy 10.0+ (for HTTPS inspection)
+- Modern web browser (for Playwright scanner)
+
+### Required Dependencies
 
 ```bash
-# Required dependencies
-pip install requests
-
-# Optional dependencies
-pip install playwright scapy
-python -m playwright install  # Install browser binaries
+pip install -r requirements.txt
 ```
 
-### Initial Setup
-
-**IMPORTANT: Set up pattern file before first use**
+If `requirements.txt` is not available, install manually:
 
 ```bash
-# 1. Copy the example patterns file
-cp patterns.env.example patterns.env
-
-# 2. (Optional) Edit patterns.env to add custom patterns
-# The file includes 99+ detection patterns for:
-# - OpenAI, Anthropic, Groq, Cohere, Hugging Face
-# - AWS, Google Cloud, Azure
-# - Stripe, PayPal, Square
-# - GitHub, GitLab, Bitbucket
-# - Slack, Discord, Telegram
-# - MongoDB, PostgreSQL, Redis
-# - And many more...
-
-# 3. Verify setup
-python -c "from config import KNOWN_PATTERNS; print(f'Loaded {len(KNOWN_PATTERNS)} patterns')"
+pip install requests colorama
 ```
 
-**Why patterns.env?**
-- Keeps sensitive regex patterns out of version control
-- Prevents GitHub security alerts on pattern signatures
-- Allows customization without modifying source code
-- patterns.env is automatically excluded via .gitignore
+### Optional Dependencies
 
-### Basic Usage
-
+#### For HTTPS Traffic Inspection
 ```bash
-# Basic scan
-python local_check.py --target http://localhost:8000 --root .
+# Install mitmproxy
+pip install mitmproxy
 
-# Full scan with all features
-python local_check.py -t http://localhost:3000 -r ./myapp --enable-playwright --enable-pcap
-
-# Custom output and depth
-python local_check.py -t http://localhost:5000 --out my_report.json --depth 100
+# Verify installation
+mitmdump --version
 ```
 
-## Command-Line Options
-
-| Option | Short | Default | Description |
-|--------|-------|---------|-------------|
-| `--target` | `-t` | `http://localhost:8000` | Target URL to scan |
-| `--root` | `-r` | `.` | Repository root for static analysis |
-| `--out` | `-o` | `audit_report.json` | Output report filename |
-| `--depth` | | `300` | Maximum pages to crawl |
-| `--enable-playwright` | | `False` | Enable browser runtime checks |
-| `--enable-pcap` | | `False` | Enable packet capture (requires root/admin) |
-| `--pcap-timeout` | | `12` | Packet capture duration in seconds |
-| `--enable-mitm` | | `False` | Enable MITM proxy for HTTPS inspection |
-| `--mitm-port` | | `8082` | Port for MITM proxy |
-| `--mitm-timeout` | | `0` | MITM duration (0 = interactive/Ctrl+C) |
-
-## MITM Proxy for HTTPS Inspection
-
-The MITM (Man-in-the-Middle) proxy feature allows you to inspect HTTPS traffic from your application in real-time.
-
-### Quick Start
-
-1. **Start the scanner with MITM enabled:**
-   ```bash
-   python local_check.py --target http://localhost:8000 --enable-mitm
-   ```
-
-2. **Configure your backend to use the proxy:**
-   
-   Copy `inject_mitm_proxy_advanced.py` to your backend directory and add ONE line at the top of your main file:
-   
-   ```python
-   import inject_mitm_proxy_advanced  # Must be FIRST import
-   
-   # Continue with your normal imports
-   from fastapi import FastAPI
-   # ... rest of your code
-   ```
-
-3. **Start your backend normally**
-
-4. **Interact with your application** - All HTTPS requests will be captured
-
-5. **Press Ctrl+C in scanner terminal** to stop and see results
-
-### What Gets Detected
-
-- 🔍 **Passwords in plaintext** - Credentials sent without proper encryption
-- 🔍 **Tokens in URLs** - API keys in query parameters (insecure practice)
-- 🔍 **Credit card numbers** - PCI-sensitive data exposure
-- 🔍 **API keys and secrets** - Leaked credentials in requests/responses
-- 🔍 **Missing security headers** - HSTS, CSP, X-Frame-Options, etc.
-- 🔍 **All custom patterns** - From your `patterns.env` file
-
-### How It Works
-
-The `inject_mitm_proxy_advanced.py` module:
-- ✅ Automatically routes all HTTP/HTTPS traffic through the MITM proxy
-- ✅ Patches Python's requests, httpx, and urllib libraries at runtime
-- ✅ Disables SSL verification (dev/test only!)
-- ✅ Works without environment variables or shell configuration
-- ✅ Easy to enable/disable (just comment out the import)
-
-## Scanner Modules
-
-### 1. Static Scanner (`scanners/static_scanner.py`)
-- Recursively scans files for hardcoded secrets
-- Uses entropy analysis and pattern matching
-- Identifies API keys, tokens, passwords in source code
-- **Configuration**: `config.py` - `EXCLUDE_SUFFIXES`, `KNOWN_PATTERNS`
-
-### 2. Git Scanner (`scanners/git_scanner.py`)
-- Analyzes git commit history for leaked secrets
-- Uses efficient pickaxe search (`git log -S`)
-- Finds secrets that were committed and later removed
-- **Performance**: 100x faster than naive commit-by-commit scanning
-
-### 3. Web Crawler (`scanners/web_crawler.py`)
-- Crawls localhost applications for exposed endpoints
-- Analyzes JavaScript files and source maps
-- Checks HTTP headers for leaked secrets
-- Probes common sensitive paths (`.env`, `.git/config`, etc.)
-- **Configuration**: `config.py` - `PROBE_PATHS`
-
-### 4. Browser Scanner (`scanners/browser_scanner.py`)
-- Uses Playwright to inspect runtime browser state
-- Checks localStorage, sessionStorage, cookies
-- Analyzes global JavaScript variables
-- **Requires**: `pip install playwright && python -m playwright install`
-
-### 5. Network Scanner (`scanners/network_scanner.py`)
-- Captures network packets to detect plaintext HTTP traffic
-- Identifies secrets transmitted over unencrypted connections
-- **Requires**: Root/Administrator privileges + Scapy
-- **Limitation**: Cannot decrypt HTTPS traffic
-
-## Configuration
-
-### Pattern Management
-
-The tool uses `patterns.env` to store secret detection patterns. This keeps sensitive regex signatures out of version control.
-
-**Setup:**
-```bash
-# Copy template
-cp patterns.env.example patterns.env
-
-# Edit to customize (optional)
-nano patterns.env  # or use your favorite editor
-```
-
-**Default Patterns (99+ included):**
-- **AI/ML**: OpenAI, Anthropic (Claude), Groq, Cohere, Hugging Face, Replicate
-- **Cloud**: AWS, Google Cloud, Azure, Heroku, Cloudflare
-- **Payments**: Stripe, PayPal, Square, Coinbase
-- **Databases**: MongoDB, PostgreSQL, MySQL, Redis, Supabase
-- **Dev Tools**: GitHub, GitLab, NPM, PyPI, Docker Hub
-- **Communication**: Slack, Discord, Telegram, Twilio, SendGrid
-- **Monitoring**: DataDog, Sentry, New Relic
-- **And many more...**
-
-### Scoring Thresholds
-```python
-MIN_LEN = 20              # Minimum string length for secrets
-ENTROPY_THRESHOLD = 3.5   # Shannon entropy threshold
-SCORE_THRESHOLD = 2       # Minimum score to report finding
-```
-
-### File Exclusions
-```python
-# Edit config.py
-EXCLUDE_SUFFIXES = {'.png', '.jpg', '.zip', ...}
-```
-
-### Probe Paths
-```python
-# Edit config.py
-PROBE_PATHS = [
-    "/.env", "/.git/config", "/config.php.bak",
-    # Add custom paths here
-]
-```
-
-## Output Format
-
-The tool generates a JSON report with:
-
-```json
-{
-  "meta": {
-    "root": "/path/to/project",
-    "target": "http://localhost:8000",
-    "time": "Wed Nov 6 2025",
-    "playwright": false,
-    "pcap": false
-  },
-  "findings": [
-    {
-      "type": "static_literal",
-      "file": "/path/to/file.js",
-      "snippet": "sk_live_abc123...",
-      "score": 6,
-      "reasons": ["len=32", "entropy=4.2", "pattern=Stripe Secret"],
-      "entropy": 4.2
-    }
-  ],
-  "summary": {
-    "static_literal": 12,
-    "git_match": 3,
-    "exposed_path": 2
-  }
-}
-```
-
-## Extending the Tool
-
-### Adding a New Pattern
-
-Edit `config.py`:
-```python
-KNOWN_PATTERNS = {
-    # ... existing patterns ...
-    "My Custom Key": re.compile(r"mykey_[0-9a-f]{32}"),
-}
-```
-
-### Creating a New Scanner
-
-1. Create `scanners/my_scanner.py`
-2. Implement your scanning logic
-3. Export function in `scanners/__init__.py`
-4. Call it from `local_check.py` main function
-
-Example:
-```python
-# scanners/my_scanner.py
-def scan_my_stuff(target):
-    findings = []
-    # Your scanning logic here
-    return findings
-
-# scanners/__init__.py
-from .my_scanner import scan_my_stuff
-__all__ = [..., 'scan_my_stuff']
-
-# local_check.py
-from scanners import scan_my_stuff
-# Call it in main()
-my_findings = scan_my_stuff(target)
-report["findings"].extend(my_findings)
-```
-
-## Module Details
-
-### `config.py`
-- All configuration constants
-- Regex patterns for secret detection
-- File exclusions and probe paths
-
-### `utils.py`
-- `shannon_entropy()` - Calculate string randomness
-- `is_text_file()` - Detect text vs binary files
-- `extract_string_literals()` - Parse quoted strings from code
-- `score_literal()` - Score strings for secret likelihood
-
-### `scanners/`
-Each scanner is independent and can be used standalone:
-```python
-from scanners import scan_files, scan_git_history, LocalCrawler
-
-# Use individual scanners
-findings = scan_files("/path/to/project")
-git_findings = scan_git_history("/path/to/repo")
-
-crawler = LocalCrawler("http://localhost:3000")
-crawler.crawl()
-```
-
-## Troubleshooting
-
-### "requests library not found"
-```bash
-pip install requests
-```
-
-### "playwright-not-installed"
+#### For Browser Runtime Inspection
 ```bash
 pip install playwright
 python -m playwright install
 ```
 
-### "scapy-not-installed"
+#### For Network Packet Capture (Advanced)
 ```bash
 pip install scapy
-# Windows: Also install Npcap from https://npcap.com/
+
+# Windows: Install Npcap from https://npcap.com/
+# Linux/Mac: May require libpcap
+```
+
+## Quick Start
+
+### Initial Setup
+
+1. **Clone or download the repository**
+
+2. **Set up pattern file** (REQUIRED before first run)
+
+```bash
+# Copy the patterns file template
+cp patterns.env.example patterns.env
+
+# The file includes 58+ detection patterns for major providers
+# Edit patterns.env to customize or add patterns (optional)
+```
+
+3. **Verify setup**
+
+```bash
+python -c "from config import KNOWN_PATTERNS; print(f'Loaded {len(KNOWN_PATTERNS)} patterns')"
+```
+
+Expected output: `Loaded 58 patterns` (or similar)
+
+### Basic Usage
+
+```bash
+# Scan with default settings
+python local_check.py --target http://localhost:8000 --root /path/to/project
+
+# Generate audit report
+cat audit_report.json
+```
+
+## MITM Proxy Setup
+
+The MITM (Man-in-the-Middle) proxy feature allows inspection of HTTPS traffic in real-time, including request/response headers and bodies.
+
+### Prerequisites
+
+1. **Install mitmproxy**
+
+```bash
+pip install mitmproxy
+
+# Verify installation
+mitmdump --version
+```
+
+2. **Copy required files to your backend**
+
+```bash
+# From the Chrome_Ext directory
+cp inject_mitm_proxy.py /path/to/your/backend/app/
+cp patterns.env /path/to/your/backend/app/
+```
+
+### Backend Integration
+
+Add the following import as the **FIRST LINE** of your main application file:
+
+**For FastAPI:**
+```python
+# backend/app/main.py
+import inject_mitm_proxy  # MUST BE FIRST IMPORT
+
+from fastapi import FastAPI
+# ... rest of your imports and code
+```
+
+**For Flask:**
+```python
+# backend/app.py
+import inject_mitm_proxy  # MUST BE FIRST IMPORT
+
+from flask import Flask
+# ... rest of your imports and code
+```
+
+**For Django:**
+```python
+# backend/manage.py or wsgi.py
+import inject_mitm_proxy  # MUST BE FIRST IMPORT
+
+# ... rest of Django setup
+```
+
+### Running with MITM Proxy
+
+1. **Start your backend application with MITM enabled**
+
+```bash
+# Set environment variable to enable MITM mode
+export ENABLE_MITM=1  # Linux/Mac
+set ENABLE_MITM=1     # Windows CMD
+$env:ENABLE_MITM=1    # Windows PowerShell
+
+# Start your backend (example with FastAPI)
+uvicorn app.main:app --reload
+```
+
+You should see:
+```
+[MITM] Loaded 58 security patterns from .../patterns.env
+[MITM] Proxy active on http://127.0.0.1:8082
+[MITM] Patched: requests, httpx, urllib, urllib3, aiohttp
+```
+
+2. **Run the security scanner**
+
+```bash
+# In a new terminal, run the scanner with MITM enabled
+python local_check.py \
+  --target http://localhost:8000 \
+  --enable-mitm \
+  --mitm-port 8082
+```
+
+3. **Interact with your application** (make HTTP requests, use API endpoints, etc.)
+
+4. **Stop the scanner** (Ctrl+C) to generate the audit report
+
+5. **Review results**
+
+```bash
+# View audit report
+cat audit_report.json
+
+# View traffic log (raw NDJSON)
+cat mitm_traffic.ndjson
+```
+
+### MITM Proxy Detection Capabilities
+
+The MITM proxy inspects both requests and responses for security issues:
+
+**Request-Side Detection:**
+- Credentials embedded in URLs (`user:pass@domain`)
+- API keys in query parameters (`?api_key=xxx`)
+- Basic Authentication headers (base64 credentials)
+- API keys in Authorization headers (with context awareness)
+- Plaintext passwords in request bodies (excludes bcrypt/argon2 hashes)
+- Secrets matching any of the 58+ patterns
+
+**Response-Side Detection:**
+- Secrets leaked in response headers
+- API keys in response bodies (JSON, HTML, JavaScript)
+- Credentials in error messages
+- Database connection strings in stack traces
+- Debug information containing sensitive data
+
+**Severity Levels:**
+- `CRITICAL`: API keys in URLs, credentials over HTTP, plaintext passwords
+- `HIGH`: API keys in headers over HTTPS (with expected auth disclaimer)
+- `INFO`: Normal traffic logging (not a security issue)
+
+### MITM Proxy Configuration
+
+The `inject_mitm_proxy.py` module supports the following environment variables:
+
+```bash
+# Enable MITM proxy mode (default: 0, monitoring only)
+export ENABLE_MITM=1
+
+# Set MITM proxy port (default: 8082)
+export MITM_PROXY_PORT=8082
+
+# Set monitoring mode (logs traffic without proxying, default: empty)
+export MITM_MODE=monitor
+```
+
+### Domain Bypass Configuration
+
+By default, the following domains bypass the MITM proxy to prevent authentication issues:
+
+- OAuth providers: `accounts.google.com`, `oauth2.googleapis.com`, `login.microsoftonline.com`
+- AWS services: All `*.amazonaws.com` domains
+- Payment providers: `stripe.com`, `paypal.com`
+- CDNs: `cloudflare.com`, `cloudfront.net`
+- Localhost: `127.0.0.1`, `localhost`
+
+To modify bypass rules, edit the `BYPASS_DOMAINS` and `AWS_SUFFIXES` variables in `inject_mitm_proxy.py`.
+
+### Uninstalling MITM Proxy
+
+To remove MITM proxy from your backend:
+
+1. Remove or comment out the import:
+```python
+# import inject_mitm_proxy  # Disabled
+```
+
+2. Restart your backend application
+
+The proxy injection only activates when the module is imported and `ENABLE_MITM=1` is set.
+
+## Configuration
+
+### Pattern File (patterns.env)
+
+The `patterns.env` file contains regular expressions for detecting secrets. This file is excluded from version control to prevent triggering GitHub security alerts.
+
+**Format:**
+```
+PATTERN_NAME=regex_pattern
+```
+
+**Adding custom patterns:**
+```bash
+# Edit patterns.env
+nano patterns.env
+
+# Add your pattern
+MY_CUSTOM_KEY=mykey_[0-9a-f]{32}
+
+# Reload the scanner
+python local_check.py --target http://localhost:8000
+```
+
+### Configuration File (config.py)
+
+**Entropy Threshold:**
+```python
+ENTROPY_THRESHOLD = 3.5  # Shannon entropy for randomness detection
+```
+
+**File Exclusions:**
+```python
+EXCLUDE_SUFFIXES = {
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico',
+    '.zip', '.tar', '.gz', '.pdf', '.exe', '.dll'
+}
+```
+
+**Probe Paths (for web crawler):**
+```python
+PROBE_PATHS = [
+    '/.env', '/.env.local', '/.env.production',
+    '/.git/config', '/.git/HEAD',
+    '/config.php.bak', '/backup.sql'
+]
+```
+
+## Usage
+
+### Command-Line Options
+
+```bash
+python local_check.py [OPTIONS]
+```
+
+**Core Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--target`, `-t` | URL | `http://localhost:8000` | Target application URL |
+| `--root`, `-r` | Path | `.` | Repository root for static analysis |
+| `--out`, `-o` | Path | `audit_report.json` | Output report filename |
+
+**Scanner Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--depth` | Integer | `300` | Maximum pages to crawl |
+| `--enable-playwright` | Flag | `False` | Enable browser runtime inspection |
+| `--enable-pcap` | Flag | `False` | Enable packet capture (requires root) |
+| `--pcap-timeout` | Integer | `12` | Packet capture duration (seconds) |
+
+**MITM Proxy Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--enable-mitm` | Flag | `False` | Enable MITM proxy for HTTPS inspection |
+| `--mitm-port` | Integer | `8082` | MITM proxy port |
+| `--mitm-duration` | Integer | `0` | Auto-stop after N seconds (0 = manual) |
+| `--mitm-traffic` | Path | Auto-detect | Custom path to traffic NDJSON file |
+
+### Usage Examples
+
+**Basic scan:**
+```bash
+python local_check.py --target http://localhost:8000 --root /path/to/project
+```
+
+**Full scan with all features:**
+```bash
+python local_check.py \
+  --target http://localhost:3000 \
+  --root ~/myapp \
+  --enable-playwright \
+  --enable-mitm \
+  --depth 500 \
+  --out security_report.json
+```
+
+**MITM-only scan (skip static/git):**
+```bash
+python local_check.py \
+  --target http://localhost:8000 \
+  --enable-mitm \
+  --mitm-duration 30
+```
+
+**Custom traffic log location:**
+```bash
+python local_check.py \
+  --target http://localhost:8000 \
+  --enable-mitm \
+  --mitm-traffic /custom/path/to/traffic.ndjson
+```
+
+## Scanner Modules
+
+### 1. Git Scanner (`scanners/git_scanner.py`)
+
+Analyzes git commit history for leaked secrets using efficient pickaxe search.
+
+**Features:**
+- Searches git history for known secret patterns
+- Uses `git log -S<term>` for 100x faster scanning than naive approaches
+- Examines up to 100 commits by default (configurable)
+- Scans added lines in diffs for pattern matches
+
+**Configuration:**
+```python
+scan_git_history(root, max_commits=100)
+```
+
+### 2. Web Crawler (`scanners/web_crawler.py`)
+
+Crawls web application endpoints to discover exposed sensitive paths and analyze client-side code.
+
+**Features:**
+- Discovers exposed `.env`, `.git/config`, backup files
+- Analyzes JavaScript files for hardcoded secrets
+- Extracts and scans source maps
+- Checks HTTP headers and cookies for leaked secrets
+- Detects catch-all responses (false positives)
+- Multi-threaded crawling with process pool for regex scanning
+
+**Configuration:**
+```python
+crawler = LocalCrawler(
+    base="http://localhost:8000",
+    timeout=6,
+    max_pages=300,
+    workers=8,
+    max_js_size=500_000  # Skip large JS bundles
+)
+```
+
+### 3. Browser Scanner (`scanners/browser_scanner.py`)
+
+Uses Playwright to inspect browser runtime state and client-side storage.
+
+**Features:**
+- Extracts localStorage contents
+- Extracts sessionStorage contents
+- Retrieves all cookies
+- Checks global variables (`window.__ENV`, `window.config`, `window.API_KEY`)
+
+**Requirements:**
+```bash
+pip install playwright
+python -m playwright install
+```
+
+**Usage:**
+```python
+playwright_inspect("http://localhost:8000")
+```
+
+### 4. Network Scanner (`scanners/network_scanner.py`)
+
+Runs mitmproxy addon for deep packet inspection (Layer 2).
+
+**Features:**
+- Intercepts HTTP/HTTPS traffic at the proxy level
+- Pattern matching on request/response bodies
+- Security header validation
+- Works alongside `inject_mitm_proxy.py` (Layer 1)
+
+**Note:** Most users will use `inject_mitm_proxy.py` for MITM inspection. This module provides additional addon-based analysis.
+
+## Output Format
+
+### Audit Report (audit_report.json)
+
+```json
+{
+  "timestamp": "2025-11-18T13:34:34.106644",
+  "target": "http://localhost:8000",
+  "stats": {
+    "git_secrets": 0,
+    "crawler_issues": 2,
+    "browser_issues": 0,
+    "mitm_proxied": 15,
+    "mitm_bypassed": 3,
+    "mitm_security_findings": 1
+  },
+  "severities": {
+    "CRITICAL": 0,
+    "HIGH": 1,
+    "MEDIUM": 0,
+    "LOW": 0,
+    "INFO": 15
+  },
+  "findings": [
+    {
+      "type": "api_key_in_header",
+      "severity": "HIGH",
+      "timestamp": 1763494461,
+      "timestamp_human": "2025-11-18 13:34:21",
+      "description": "GROQ_API_KEY in Authorization header over HTTPS (expected for server-side API calls, review if unexpected)",
+      "url": "https://api.groq.com/openai/v1/chat/completions",
+      "client": "requests",
+      "method": "post",
+      "pattern": "GROQ_API_KEY",
+      "header": "Authorization"
+    }
+  ]
+}
+```
+
+### Traffic Log (mitm_traffic.ndjson)
+
+NDJSON (newline-delimited JSON) format for append-only logging:
+
+```json
+{"ts": 1763494398, "timestamp": "2025-11-18 13:33:18", "stage": "mitm_outbound", "client": "requests", "method": "post", "url": "https://api.example.com/endpoint"}
+{"ts": 1763494461, "timestamp": "2025-11-18 13:34:21", "stage": "security_finding", "severity": "HIGH", "type": "api_key_in_header", "pattern": "GROQ_API_KEY", "description": "...", "url": "...", "client": "requests", "method": "post", "header": "Authorization"}
+```
+
+**Stages:**
+- `mitm_outbound`: Request sent through proxy
+- `mitm_bypass`: Request bypassed proxy (OAuth, AWS, etc.)
+- `security_finding`: Security issue detected
+
+## Advanced Usage
+
+### Custom Pattern Detection
+
+Create a custom pattern file:
+
+```bash
+# Create custom-patterns.env
+cat > custom-patterns.env << EOF
+CUSTOM_API_KEY=custom_[0-9a-f]{32}
+INTERNAL_TOKEN=int_tok_[A-Za-z0-9]{24}
+EOF
+
+# Edit config.py to load from custom file
+# (Modify PATTERNS_FILE path in config.py)
+```
+
+### Integrating with CI/CD
+
+```yaml
+# .github/workflows/security-scan.yml
+name: Security Audit
+on: [push, pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - run: pip install -r requirements.txt
+      - run: cp patterns.env.example patterns.env
+      - run: python local_check.py --target http://localhost:8000 --root .
+      - run: |
+          if jq -e '.severities.CRITICAL > 0' audit_report.json; then
+            echo "CRITICAL issues found!"
+            exit 1
+          fi
+```
+
+### Programmatic Usage
+
+```python
+from scanners import scan_git_history, LocalCrawler, playwright_inspect
+
+# Git scanning
+git_findings = scan_git_history("/path/to/repo", max_commits=100)
+
+# Web crawling
+crawler = LocalCrawler("http://localhost:8000", max_pages=200)
+crawler.probe_common_paths()
+crawler.crawl()
+web_findings = crawler.findings
+
+# Browser inspection
+browser_data = playwright_inspect("http://localhost:8000")
+
+# Combine results
+all_findings = git_findings + web_findings
+```
+
+## Troubleshooting
+
+### "No module named 'requests'"
+
+```bash
+pip install requests
+```
+
+### "patterns.env not found"
+
+```bash
+cp patterns.env.example patterns.env
+```
+
+### "playwright-not-installed"
+
+```bash
+pip install playwright
+python -m playwright install
+```
+
+### "MITM proxy not loading patterns"
+
+**Issue:** Backend shows `WARNING: patterns.env not found`
+
+**Solution:**
+```bash
+# Verify patterns.env is in the same directory as inject_mitm_proxy.py
+ls -la /path/to/backend/app/patterns.env
+
+# If missing, copy it
+cp patterns.env /path/to/backend/app/
+```
+
+### "MITM proxy not intercepting traffic"
+
+**Issue:** No traffic logged in `mitm_traffic.ndjson`
+
+**Solutions:**
+
+1. Verify MITM is enabled:
+```bash
+export ENABLE_MITM=1
+python app.py
+# Should see: "[MITM] Proxy active on http://127.0.0.1:8082"
+```
+
+2. Check import order (must be FIRST):
+```python
+import inject_mitm_proxy  # MUST BE FIRST
+# ... other imports
+```
+
+3. Verify proxy port matches:
+```bash
+# Scanner
+python local_check.py --enable-mitm --mitm-port 8082
+
+# Backend
+export MITM_PROXY_PORT=8082
 ```
 
 ### "Permission denied during packet capture"
+
 ```bash
 # Linux/Mac
 sudo python local_check.py --enable-pcap
@@ -338,15 +672,87 @@ sudo python local_check.py --enable-pcap
 # Run terminal as Administrator
 ```
 
-### Git scan is slow
-- This is normal for large repos (100k+ commits)
-- The tool limits to 20 commits per pattern
-- Consider scanning specific branches: modify `git_scanner.py`
+### "Git scan is very slow"
+
+This is normal for large repositories (100k+ commits). The tool limits to 100 commits by default. To adjust:
+
+```python
+# Modify scanners/git_scanner.py
+scan_git_history(root, max_commits=50)  # Reduce commit limit
+```
+
+### "Too many false positives"
+
+1. Adjust entropy threshold in `config.py`:
+```python
+ENTROPY_THRESHOLD = 4.0  # Higher = fewer false positives
+```
+
+2. Add exclusions for known patterns:
+```python
+# In config.py
+EXCLUDE_PATTERNS = [
+    r'test_api_key_123',  # Test keys
+    r'example\.com',      # Example domains
+]
+```
+
+3. Filter by severity in audit report:
+```bash
+# Only show CRITICAL issues
+jq '.findings[] | select(.severity == "CRITICAL")' audit_report.json
+```
+
+## Security Considerations
+
+### Testing Your Own Applications Only
+
+This tool is designed for security testing of applications you own or have explicit permission to test. Unauthorized scanning may violate laws and terms of service.
+
+### MITM Proxy Security
+
+The MITM proxy **disables SSL verification** for testing purposes. This should only be used in development/testing environments, never in production.
+
+**Do NOT:**
+- Use MITM proxy in production environments
+- Commit `inject_mitm_proxy.py` import to production code
+- Share MITM proxy logs (may contain sensitive data)
+
+**Best Practices:**
+- Use environment variables to control MITM activation
+- Keep `mitm_traffic.ndjson` and `audit_report.json` out of version control (add to `.gitignore`)
+- Review and sanitize audit reports before sharing
+
+### Pattern File Security
+
+The `patterns.env` file is excluded from version control by default (`.gitignore`) to avoid triggering GitHub security alerts on pattern signatures.
+
+**Do NOT:**
+- Commit `patterns.env` to public repositories
+- Include actual secret values in pattern files
+- Share pattern files with untrusted parties
 
 ## License
 
-MIT License - See original project documentation
+MIT License - See LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please follow these guidelines:
+
+1. Test your changes with multiple target applications
+2. Update documentation for new features
+3. Follow existing code style and structure
+4. Add tests for new scanner modules
+5. Ensure no secrets are committed in test files
 
 ## Disclaimer
 
-This tool is intended for lawful security testing of YOUR OWN applications only. Do not use it to scan applications you don't own or have permission to test.
+This tool is provided for lawful security testing only. Users are responsible for ensuring they have proper authorization before scanning any application. The authors assume no liability for misuse or unauthorized access.
+
+## Support
+
+For issues, questions, or contributions:
+- Open an issue on GitHub
+- Review existing issues before creating new ones
+- Provide detailed information (OS, Python version, error messages, steps to reproduce)
