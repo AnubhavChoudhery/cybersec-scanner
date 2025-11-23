@@ -66,7 +66,7 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument("--target", required=True, help="http://localhost:8000")
+    parser.add_argument("--target", help="http://localhost:8000")
     parser.add_argument("--root", default=".", help="Project root path")
 
     parser.add_argument("--enable-git", action="store_true", help="Enable git scanning")
@@ -104,6 +104,15 @@ def main():
             TRAFFIC_FILE = candidates[0]  # use first as default
 
     print(f"Using MITM traffic file: {TRAFFIC_FILE}")
+    
+    # Ensure traffic file exists (create empty file if not)
+    try:
+        if not TRAFFIC_FILE.exists():
+            TRAFFIC_FILE.parent.mkdir(parents=True, exist_ok=True)
+            TRAFFIC_FILE.write_text("")
+            print(f"{Fore.YELLOW}[INFO] Created empty traffic file: {TRAFFIC_FILE}{Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.YELLOW}[WARN] Could not create traffic file: {e}{Style.RESET_ALL}")
 
     all_findings = []
     stats = {

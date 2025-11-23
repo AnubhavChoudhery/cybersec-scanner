@@ -189,23 +189,19 @@ import inject_mitm_proxy  # MUST BE FIRST IMPORT
 
 ### Running with MITM Proxy
 
-1. **Start your backend application with MITM enabled**
+1. **Start your backend application**
 
 ```bash
-# Set environment variable to enable MITM mode
-export ENABLE_MITM=1  # Linux/Mac
-set ENABLE_MITM=1     # Windows CMD
-$env:ENABLE_MITM=1    # Windows PowerShell
-
-# Start your backend (example with FastAPI)
-uvicorn app.main:app --reload
+# No environment variables needed - proxy is always enabled
+# Just start your backend normally
+uvicorn app.main:app --reload  # FastAPI example
 ```
 
 You should see:
 ```
-[MITM] Loaded 58 security patterns from .../patterns.env
 [MITM] Proxy active on http://127.0.0.1:8082
-[MITM] Patched: requests, httpx, urllib, urllib3, aiohttp
+[MITM] Bypass mode: AWS, OAuth, AI providers, payments, CDNs
+[MITM] Patched libraries: requests, httpx, urllib, urllib3, aiohttp
 ```
 
 2. **Run the security scanner**
@@ -258,30 +254,44 @@ The MITM proxy inspects both requests and responses for security issues:
 
 ### MITM Proxy Configuration
 
-The `inject_mitm_proxy.py` module supports the following environment variables:
+The `inject_mitm_proxy.py` module works automatically when imported. The only optional configuration is:
 
 ```bash
-# Enable MITM proxy mode (default: 0, monitoring only)
-export ENABLE_MITM=1
-
-# Set MITM proxy port (default: 8082)
-export MITM_PROXY_PORT=8082
-
-# Set monitoring mode (logs traffic without proxying, default: empty)
-export MITM_MODE=monitor
+# Set custom MITM proxy port (default: 8082)
+export MITM_PROXY_PORT=9000
 ```
+
+**No other environment variables needed** - the proxy runs in full mode by default with intelligent domain bypass.
 
 ### Domain Bypass Configuration
 
-By default, the following domains bypass the MITM proxy to prevent authentication issues:
+By default, the following domains bypass the MITM proxy to prevent authentication and SSL issues:
 
-- OAuth providers: `accounts.google.com`, `oauth2.googleapis.com`, `login.microsoftonline.com`
-- AWS services: All `*.amazonaws.com` domains
-- Payment providers: `stripe.com`, `paypal.com`
-- CDNs: `cloudflare.com`, `cloudfront.net`
-- Localhost: `127.0.0.1`, `localhost`
+**OAuth Providers:**
+- `accounts.google.com`, `oauth2.googleapis.com`, `login.microsoftonline.com`
 
-To modify bypass rules, edit the `BYPASS_DOMAINS` and `AWS_SUFFIXES` variables in `inject_mitm_proxy.py`.
+**AI Providers:**
+- `api.openai.com`, `openai.com`
+- `api.anthropic.com`, `anthropic.com`
+- `api.groq.com`, `groq.com`
+- `api.mistral.ai`, `mistral.ai`
+- `api-inference.huggingface.co`, `huggingface.co`
+- `api.cohere.ai`, `replicate.com`, `together.xyz`, `anyscale.com`, `perplexity.ai`
+
+**AWS Services:**
+- All `*.amazonaws.com` domains
+- API Gateway, Lambda, S3, CloudFront
+
+**Payment Providers:**
+- `stripe.com`, `paypal.com`
+
+**CDNs:**
+- `cloudflare.com`, `cloudfront.net`
+
+**Localhost:**
+- `127.0.0.1`, `localhost`
+
+To modify bypass rules, edit the `BYPASS_DOMAINS` and `AWS_SUFFIXES` sets in `inject_mitm_proxy.py`.
 
 ### Uninstalling MITM Proxy
 
@@ -294,7 +304,7 @@ To remove MITM proxy from your backend:
 
 2. Restart your backend application
 
-The proxy injection only activates when the module is imported and `ENABLE_MITM=1` is set.
+The proxy is only active when the module is imported.
 
 ## Configuration
 
@@ -640,20 +650,15 @@ cp patterns.env /path/to/backend/app/
 
 **Solutions:**
 
-1. Verify MITM is enabled:
-```bash
-export ENABLE_MITM=1
+1. Verify import is present and FIRST:
+```python
+import inject_mitm_proxy  # MUST BE FIRST
+# ... other imports
 python app.py
 # Should see: "[MITM] Proxy active on http://127.0.0.1:8082"
 ```
 
-2. Check import order (must be FIRST):
-```python
-import inject_mitm_proxy  # MUST BE FIRST
-# ... other imports
-```
-
-3. Verify proxy port matches:
+2. Check proxy port matches:
 ```bash
 # Scanner
 python local_check.py --enable-mitm --mitm-port 8082

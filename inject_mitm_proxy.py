@@ -2,21 +2,28 @@
 """
 inject_mitm_proxy.py
 
-Guarantees:
+Automatic HTTPS traffic interception with intelligent domain bypass.
 
-✔ AWS (ALL REGIONS, ALL SERVICES) bypass MITM
-✔ OAuth providers bypass MITM
-✔ AI providers bypass MITM
-✔ Banking/payments (Stripe/PayPal) bypass MITM
-✔ Cloudflare/CDN bypass MITM
-✔ Localhost always bypassed
-✔ boto3 never breaks due to proxy interception
-✔ requests/httpx/urllib patched safely
+Features:
+- Full proxy mode enabled by default (no environment variables needed)
+- Automatic bypass for AWS, OAuth, AI providers, payments, CDNs
+- Real-time security inspection of requests and responses
+- Pattern-based secret detection (58+ patterns)
+- Traffic logging to NDJSON format
 
-Use:
-    export ENABLE_MITM=1
-    export MITM_PROXY_PORT=8082
-    python -c "import inject_mitm_proxy; inject_mitm_proxy.inject_mitm_proxy_advanced()"
+Bypass domains (no interception):
+- AWS services: *.amazonaws.com
+- OAuth: accounts.google.com, oauth2.googleapis.com
+- AI providers: api.openai.com, api.groq.com, api.mistral.ai, etc.
+- Payments: stripe.com, paypal.com
+- CDNs: cloudflare.com, cloudfront.net
+- Localhost: 127.0.0.1, localhost
+
+Usage:
+    import inject_mitm_proxy  # Add as FIRST import in your main.py
+    
+    # Optional: customize proxy port
+    export MITM_PROXY_PORT=8082  # Default: 8082
 """
 
 from __future__ import annotations
@@ -34,8 +41,9 @@ from urllib.parse import urlparse
 # --- GLOBAL SETTINGS ---
 MITM_PROXY_PORT = int(os.getenv("MITM_PROXY_PORT", 8082))
 MITM_PROXY_URL = f"http://127.0.0.1:{MITM_PROXY_PORT}"
-ENABLE_MITM = (os.getenv("ENABLE_MITM", "0") == "1")
-MONITOR_ONLY = (os.getenv("MITM_MODE", "").lower() == "monitor")
+
+# Always enabled - full proxy mode with selective bypass
+ENABLE_MITM = True
 
 TRAFFIC_LOG = Path(__file__).parent / "mitm_traffic.ndjson"
 _lock = threading.Lock()
@@ -96,6 +104,17 @@ BYPASS_DOMAINS = set([
     "accounts.google.com", "oauth2.googleapis.com", "www.googleapis.com", "googleapis.com",
     "login.microsoftonline.com", "login.live.com",
     "auth0.com", "okta.com",
+
+    # --- AI Providers (to prevent SSL/auth issues) ---
+    "api.openai.com", "openai.com",
+    "api.anthropic.com", "anthropic.com",
+    "api.groq.com", "groq.com",
+    "api-inference.huggingface.co", "huggingface.co",
+    "api.cohere.ai", "cohere.ai",
+    "replicate.com", "api.replicate.com",
+    "together.xyz", "api.together.xyz",
+    "anyscale.com", "api.anyscale.com",
+    "perplexity.ai", "api.perplexity.ai",
 
     # --- Banking / Payments ---
     "stripe.com", "api.stripe.com",
@@ -474,7 +493,7 @@ def _patch_requests_session():
     orig_request = requests.Session.request
 
     def _patched_request(self, method, url, **kwargs):
-        if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+        if not _should_bypass(url):
             kwargs.setdefault("proxies", {
                 "http": MITM_PROXY_URL,
                 "https": MITM_PROXY_URL,
@@ -493,7 +512,7 @@ def _patch_requests_session():
         
         # Terminal visibility and NDJSON logging
         try:
-            if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+            if not _should_bypass(url):
                 msg = f"[MITM] PROXY {method} {_redact(url)} (client=requests)"
                 logger.info(msg)
                 _log_traffic("mitm_outbound", {"client": "requests", "method": method, "url": _redact(url)})
@@ -528,7 +547,7 @@ def _patch_httpx():
     orig_req = httpx.Client.request
 
     def _client_req(self, method, url, **kwargs):
-        if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+        if not _should_bypass(url):
             kwargs.setdefault("proxies", {
                 "http://": MITM_PROXY_URL,
                 "https://": MITM_PROXY_URL,
@@ -544,7 +563,7 @@ def _patch_httpx():
             pass
         
         try:
-            if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+            if not _should_bypass(url):
                 msg = f"[MITM] PROXY {method} {_redact(url)} (client=httpx)"
                 logger.info(msg)
                 _log_traffic("mitm_outbound", {"client": "httpx", "method": method, "url": _redact(url)})
@@ -585,7 +604,7 @@ def _patch_urllib():
         except Exception:
             pass
         
-        if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+        if not _should_bypass(url):
             proxy_handler = urllib.request.ProxyHandler({
                 "http": MITM_PROXY_URL, "https": MITM_PROXY_URL
             })
@@ -637,7 +656,7 @@ def _patch_urllib3():
                 pass
             
             try:
-                if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+                if not _should_bypass(url):
                     logger.info(f"[MITM] PROXY {method} {_redact(url)} (client=urllib3)")
                     _log_traffic("mitm_outbound", {"client": "urllib3", "method": method, "url": _redact(url)})
                 else:
@@ -668,7 +687,7 @@ def _patch_urllib3():
         def _conn_urlopen(self, method, url, **kwargs):
             try:
                 full = (getattr(self, 'host', '') and f"https://{self.host}{url}") or url
-                if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(full):
+                if not _should_bypass(full):
                     logger.info(f"[MITM] PROXY {method} {_redact(full)} (client=urllib3.conn)")
                     _log_traffic("mitm_outbound", {"client": "urllib3.conn", "method": method, "url": _redact(full)})
                 else:
@@ -706,7 +725,7 @@ def _patch_aiohttp():
                 pass
             
             try:
-                if ENABLE_MITM and not MONITOR_ONLY and not _should_bypass(url):
+                if not _should_bypass(url):
                     logger.info(f"[MITM] PROXY {method} {_redact(url)} (client=aiohttp)")
                     _log_traffic("mitm_outbound", {"client": "aiohttp", "method": method, "url": _redact(url)})
                 else:
@@ -739,30 +758,29 @@ def _patch_aiohttp():
 
 def setup_env_vars():
     """
-    This function is *critical*.
-    boto3 ONLY respects system-level:
+    Configure environment variables for proxy and bypass domains.
+    
+    boto3 and other AWS SDKs ONLY respect system-level:
         - HTTPS_PROXY
         - NO_PROXY
-    So we must ensure AWS domains ALWAYS appear inside NO_PROXY.
+    
+    We ensure AWS domains ALWAYS appear in NO_PROXY to prevent boto3 breakage.
     """
+    os.environ["HTTP_PROXY"] = MITM_PROXY_URL
+    os.environ["HTTPS_PROXY"] = MITM_PROXY_URL
 
-    if ENABLE_MITM and not MONITOR_ONLY:
-        os.environ["HTTP_PROXY"] = MITM_PROXY_URL
-        os.environ["HTTPS_PROXY"] = MITM_PROXY_URL
+    # Build NO_PROXY list
+    np = set(LOCALHOST_BYPASS)
+    np.update(BYPASS_DOMAINS)
 
-        # Build NO_PROXY list
-        np = set(LOCALHOST_BYPASS)
-        np.update(BYPASS_DOMAINS)
+    # Add wildcard AWS bypass (boto3 respects these)
+    np.update({
+        "amazonaws.com",
+        ".amazonaws.com",
+    })
 
-        # Add wildcard AWS bypass
-        # boto3 respects: "amazonaws.com"
-        np.update({
-            "amazonaws.com",
-            ".amazonaws.com",
-        })
-
-        os.environ["NO_PROXY"] = ",".join(sorted(np))
-        os.environ["no_proxy"] = os.environ["NO_PROXY"]
+    os.environ["NO_PROXY"] = ",".join(sorted(np))
+    os.environ["no_proxy"] = os.environ["NO_PROXY"]
 
 
 # ============================
@@ -770,6 +788,11 @@ def setup_env_vars():
 # ============================
 
 def inject_mitm_proxy_advanced():
+    """Initialize MITM proxy with automatic HTTP client patching.
+    
+    Full proxy mode is always enabled with intelligent domain bypass.
+    No environment variables required (except optional MITM_PROXY_PORT).
+    """
     # Clear/create NDJSON traffic log on startup
     try:
         with _lock:
@@ -777,12 +800,10 @@ def inject_mitm_proxy_advanced():
     except Exception:
         pass
 
-    if ENABLE_MITM and not MONITOR_ONLY:
-        print(f"[MITM] Proxy active on {MITM_PROXY_URL}")
-        _patch_ssl_global()
-        setup_env_vars()
-    else:
-        print("[MITM] Monitor-only mode")
+    print(f"[MITM] Proxy active on {MITM_PROXY_URL}")
+    print(f"[MITM] Bypass mode: AWS, OAuth, AI providers, payments, CDNs")
+    _patch_ssl_global()
+    setup_env_vars()
 
     patched = []
     if _patch_requests_session(): patched.append("requests")
@@ -791,7 +812,7 @@ def inject_mitm_proxy_advanced():
     if _patch_urllib3(): patched.append("urllib3")
     if _patch_aiohttp(): patched.append("aiohttp")
 
-    print(f"Patched libraries: {patched}")
+    print(f"[MITM] Patched libraries: {', '.join(patched)}")
     return True
 
 
