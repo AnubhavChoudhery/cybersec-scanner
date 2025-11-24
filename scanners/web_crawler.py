@@ -498,3 +498,29 @@ class LocalCrawler:
             self.process_pool.shutdown(wait=True)
         except Exception:
             pass
+
+
+def process_crawler_findings(crawler_findings):
+    """
+    Process crawler findings and filter out non-issues.
+    
+    Args:
+        crawler_findings (list): Raw findings from LocalCrawler
+        
+    Returns:
+        list: Filtered findings (excludes successful status codes)
+    """
+    real_issues = [
+        f for f in crawler_findings 
+        if f.get("type") != "status" or f.get("status", 200) >= 400
+    ]
+    
+    return [
+        {
+            "type": "crawler_issue",
+            "url": f.get("url"),
+            "description": f.get("description"),
+            "details": f
+        }
+        for f in real_issues
+    ]

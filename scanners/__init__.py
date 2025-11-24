@@ -9,14 +9,18 @@ Provides scanners for:
 """
 
 from .git_scanner import scan_git_history
-from .web_crawler import LocalCrawler
-from .browser_scanner import playwright_inspect
+from .web_crawler import LocalCrawler, process_crawler_findings
+from .browser_scanner import playwright_inspect, process_browser_findings
 from .network_scanner import run_mitm_dump, stop_mitm_dump
+from .mitm_processor import parse_mitm_traffic
 
 __all__ = [
     'scan_git_history',
     'LocalCrawler',
+    'process_crawler_findings',
     'playwright_inspect',
+    'process_browser_findings',
     'run_mitm_dump',
     'stop_mitm_dump',
+    'parse_mitm_traffic',
 ]

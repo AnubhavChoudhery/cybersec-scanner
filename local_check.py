@@ -30,22 +30,28 @@ except Exception:
         return []
 
 try:
-    from scanners.browser_scanner import playwright_inspect
+    from scanners.browser_scanner import playwright_inspect, process_browser_findings
 except Exception:
     def playwright_inspect(*args, **kwargs):
         return {"error": "playwright not installed"}
+    def process_browser_findings(*args, **kwargs):
+        return []
 
 try:
-    from scanners.web_crawler import LocalCrawler
+    from scanners.web_crawler import LocalCrawler, process_crawler_findings
 except Exception:
     LocalCrawler = None
+    def process_crawler_findings(*args, **kwargs):
+        return []
 
-# NEW UPDATED IMPORTS (aligned with your rewritten system)
+# NEW UPDATED IMPORTS
 try:
     from scanners.network_scanner import run_mitm_dump, stop_mitm_dump
+    from scanners.mitm_processor import parse_mitm_traffic
 except Exception:
     def run_mitm_dump(*a, **k): return (None, "mitmproxy missing")
     def stop_mitm_dump(*a, **k): return {"error": "mitmproxy missing"}
+    def parse_mitm_traffic(*a, **k): return {"traffic_findings": [], "proxied": 0, "bypassed": 0, "security_findings": []}
 
 # Colorama soft fallback
 try:
@@ -70,8 +76,7 @@ def main():
     parser.add_argument("--root", default=".", help="Project root path")
 
     parser.add_argument("--enable-git", action="store_true", help="Enable git scanning")
-    parser.add_argument("--enable-crawler", action="store_true", help="Enable crawler")
-    parser.add_argument("--enable-browser", action="store_true", help="Enable browser inspection")
+    parser.add_argument("--enable-runtime", action="store_true", help="Enable runtime inspection (browser + web crawler)")
     parser.add_argument("--enable-mitm", action="store_true", help="Enable MITM Network Inspection")
 
     parser.add_argument("--max-commits", type=int, default=50, help="Max commits to scan in git history")
@@ -159,94 +164,25 @@ def main():
 
                 mitm_results = stop_mitm_dump(proc, results_path)
 
-                # Parse injector traffic NDJSON regardless of mitmproxy results
-                # This ensures we capture traffic even if mitmproxy addon failed
-                try:
-                    proxied = 0
-                    bypassed = 0
-                    traffic_findings = []
-                    
-                    if TRAFFIC_FILE.exists():
-                        with TRAFFIC_FILE.open("r", encoding="utf-8") as tf:
-                                for line in tf:
-                                    line = line.strip()
-                                    if not line:
-                                        continue
-                                    try:
-                                        entry = json.loads(line)
-                                        stage = entry.get("stage")
-                                        
-                                        # Flat structure: client/method/url are at top level
-                                        client = entry.get("client")
-                                        method = entry.get("method")
-                                        url = entry.get("url")
-                                        
-                                        if stage == "mitm_outbound":
-                                            proxied += 1
-                                            # Add to findings for audit report
-                                            traffic_findings.append({
-                                                "type": "mitm_proxied_request",
-                                                "severity": "INFO",
-                                                "timestamp": entry.get("ts"),
-                                                "timestamp_human": entry.get("timestamp"),
-                                                "client": client,
-                                                "method": method,
-                                                "url": url,
-                                                "description": f"Proxied request via MITM: {method} {url} (client={client})"
-                                            })
-                                        elif stage == "mitm_bypass":
-                                            bypassed += 1
-                                    except json.JSONDecodeError:
-                                        continue
-                    
-                    # Add traffic findings to all_findings
-                    all_findings.extend(traffic_findings)
-                    stats["mitm_proxied"] = proxied
-                    stats["mitm_bypassed"] = bypassed
-                    
-                    print(f"{Fore.GREEN}[OK] Injector traffic parsed{Style.RESET_ALL}")
-                    print(f"Proxied (injector): {proxied}")
-                    print(f"Bypassed (injector): {bypassed}")
-                    
-                    # Parse security findings from same file (stage=security_finding)
-                    security_count = 0
-                    if TRAFFIC_FILE.exists():
-                        with TRAFFIC_FILE.open("r", encoding="utf-8") as tf:
-                            for line in tf:
-                                line = line.strip()
-                                if not line:
-                                    continue
-                                try:
-                                    entry = json.loads(line)
-                                    if entry.get("stage") == "security_finding":
-                                        # Add to all_findings with proper structure
-                                        all_findings.append({
-                                            "type": entry.get("type"),
-                                            "severity": entry.get("severity"),
-                                            "timestamp": entry.get("ts"),
-                                            "timestamp_human": entry.get("timestamp"),
-                                            "description": entry.get("description"),
-                                            "url": entry.get("url"),
-                                            "client": entry.get("client"),
-                                            "method": entry.get("method"),
-                                            "pattern": entry.get("pattern"),
-                                            "field": entry.get("field"),
-                                            "header": entry.get("header"),
-                                        })
-                                        security_count += 1
-                                except json.JSONDecodeError:
-                                    continue
-                    
-                    stats["mitm_security_findings"] = security_count
-                    if security_count > 0:
-                        print(f"{Fore.RED}[!] Security issues found: {security_count}{Style.RESET_ALL}")
-                    else:
-                        print(f"{Fore.GREEN}[OK] No security issues detected{Style.RESET_ALL}")
-                    
-                except Exception as e:
-                    print(f"{Fore.YELLOW}[WARN] Traffic log parse error: {e}{Style.RESET_ALL}")
+                # Parse traffic NDJSON file
+                traffic_data = parse_mitm_traffic(TRAFFIC_FILE)
+                
+                all_findings.extend(traffic_data["traffic_findings"])
+                all_findings.extend(traffic_data["security_findings"])
+                stats["mitm_proxied"] = traffic_data["proxied"]
+                stats["mitm_bypassed"] = traffic_data["bypassed"]
+                stats["mitm_security_findings"] = len(traffic_data["security_findings"])
+                
+                print(f"{Fore.GREEN}[OK] Injector traffic parsed{Style.RESET_ALL}")
+                print(f"Proxied (injector): {traffic_data['proxied']}")
+                print(f"Bypassed (injector): {traffic_data['bypassed']}")
+                
+                if traffic_data["security_findings"]:
+                    print(f"{Fore.RED}[!] Security issues found: {len(traffic_data['security_findings'])}{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.GREEN}[OK] No security issues detected{Style.RESET_ALL}")
 
-                # Now report mitmproxy addon results if available
+                # Report mitmproxy addon results if available
                 if isinstance(mitm_results, dict) and "error" not in mitm_results:
                     stats["mitm_findings"] = len(mitm_results.get("findings", []))
                     all_findings.extend(mitm_results.get("findings", []))
@@ -265,109 +201,56 @@ def main():
         print(f"{Fore.LIGHTBLACK_EX}[PHASE 2] MITM - SKIPPED{Style.RESET_ALL}\n")
 
     # ==========================================================================
-    # PHASE 3: BROWSER RUNTIME (requires running app)
+    # PHASE 3: RUNTIME INSPECTION (Browser + Web Crawler)
     # ==========================================================================
-    if args.enable_browser:
-        print(f"{Fore.GREEN}[PHASE 3] Browser Runtime Checks{Style.RESET_ALL}")
-        try:
-            crawler = LocalCrawler(args.target, max_pages=100)  # Default max pages
-            crawler.crawl()
-
-            # Filter out non-issue findings (exclude successful status codes)
-            real_issues = [
-                f for f in crawler.findings 
-                if f.get("type") != "status" or f.get("status", 200) >= 400
-            ]
-            
-            stats["crawler_issues"] = len(real_issues)
-            all_findings.extend([
-                {
-                    "type": "crawler_issue",
-                    "url": f.get("url"),
-                    "description": f.get("description"),
-                    "details": f
-                }
-                for f in real_issues
-            ])
-
-            print(f"{Fore.CYAN}[OK] Crawled {len(crawler.visited)} pages{Style.RESET_ALL}")
-            if real_issues:
-                print(f"{Fore.YELLOW}[!] {len(real_issues)} issues found{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.GREEN}[OK] No crawler issues{Style.RESET_ALL}")
-
-        except Exception as e:
-            print(f"{Fore.RED}[ERROR] Browser scan failed: {e}{Style.RESET_ALL}")
-        print()
-
-    else:
-        print(f"{Fore.LIGHTBLACK_EX}[PHASE 3] Browser - SKIPPED{Style.RESET_ALL}\n")
-
-    # ==========================================================================
-    # PHASE 4: WEB CRAWLER (requires running app, scans all JS files)
-    # ==========================================================================
-    if args.enable_crawler and LocalCrawler:
-        print(f"{Fore.GREEN}[PHASE 4] Web Crawler (Full JS Scanning){Style.RESET_ALL}")
+    if args.enable_runtime:
+        print(f"{Fore.GREEN}[PHASE 3] Runtime Inspection (Browser + Web Crawler){Style.RESET_ALL}")
+        
+        # Browser Runtime Checks
+        print(f"{Fore.CYAN}  → Browser Runtime Checks{Style.RESET_ALL}")
         try:
             br = playwright_inspect(args.target)
             if "error" in br:
                 print(f"{Fore.YELLOW}[WARN] Browser unavailable: {br['error']}{Style.RESET_ALL}")
             else:
-                findings = []
+                browser_findings = process_browser_findings(br)
+                stats["browser_issues"] = len(browser_findings)
+                all_findings.extend(browser_findings)
 
-                # localStorage
-                for k, v in br.get("localStorage", {}).items():
-                    if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
-                        findings.append({
-                            "type": "browser_storage",
-                            "location": "localStorage",
-                            "key": k,
-                            "value": str(v)[:120]
-                        })
-
-                # sessionStorage
-                for k, v in br.get("sessionStorage", {}).items():
-                    if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
-                        findings.append({
-                            "type": "browser_storage",
-                            "location": "sessionStorage",
-                            "key": k,
-                            "value": str(v)[:120]
-                        })
-
-                # insecure cookies
-                for c in br.get("cookies", []):
-                    if not c.get("secure") or not c.get("httpOnly"):
-                        findings.append({
-                            "type": "cookie_insecure",
-                            "name": c["name"],
-                            "secure": c.get("secure"),
-                            "httpOnly": c.get("httpOnly")
-                        })
-
-                # exposed globals
-                for k, v in br.get("globals", {}).items():
-                    if v not in (None, "", False):
-                        findings.append({
-                            "type": "browser_global",
-                            "key": k,
-                            "value": str(v)[:120]
-                        })
-
-                stats["browser_issues"] = len(findings)
-                all_findings.extend(findings)
-
-                if findings:
-                    print(f"{Fore.YELLOW}[!] {len(findings)} browser issues detected{Style.RESET_ALL}")
+                if browser_findings:
+                    print(f"{Fore.YELLOW}[!] {len(browser_findings)} browser issues detected{Style.RESET_ALL}")
                 else:
                     print(f"{Fore.GREEN}[OK] No browser issues{Style.RESET_ALL}")
 
         except Exception as e:
-            print(f"{Fore.RED}[ERROR] Crawler failed: {e}{Style.RESET_ALL}")
+            print(f"{Fore.RED}[ERROR] Browser scan failed: {e}{Style.RESET_ALL}")
+        
+        # Web Crawler (Full JS Scanning)
+        if LocalCrawler:
+            print(f"{Fore.CYAN}  → Web Crawler (Full JS Scanning){Style.RESET_ALL}")
+            try:
+                crawler = LocalCrawler(args.target, max_pages=100, max_js_size=None)
+                crawler.crawl()
+
+                crawler_findings = process_crawler_findings(crawler.findings)
+                stats["crawler_issues"] = len(crawler_findings)
+                all_findings.extend(crawler_findings)
+
+                print(f"{Fore.CYAN}[OK] Crawled {len(crawler.visited)} pages{Style.RESET_ALL}")
+                if crawler_findings:
+                    print(f"{Fore.YELLOW}[!] {len(crawler_findings)} issues found{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.GREEN}[OK] No crawler issues{Style.RESET_ALL}")
+
+            except Exception as e:
+                print(f"{Fore.RED}[ERROR] Crawler failed: {e}{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.YELLOW}[WARN] Web crawler unavailable (requests library missing){Style.RESET_ALL}")
+        
         print()
 
     else:
-        print(f"{Fore.LIGHTBLACK_EX}[PHASE 4] Crawler - SKIPPED{Style.RESET_ALL}\n")
+        print(f"{Fore.LIGHTBLACK_EX}[PHASE 3] Runtime Inspection - SKIPPED{Style.RESET_ALL}\n")
 
     # ==========================================================================
     # FINAL REPORT

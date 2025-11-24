@@ -104,3 +104,60 @@ def playwright_inspect(target):
         }
     
     return out
+
+
+def process_browser_findings(browser_data):
+    """
+    Process browser runtime data and extract security findings.
+    
+    Args:
+        browser_data (dict): Output from playwright_inspect()
+        
+    Returns:
+        list: Security findings from browser storage, cookies, and globals
+    """
+    findings = []
+    
+    if "error" in browser_data:
+        return findings
+    
+    # localStorage
+    for k, v in browser_data.get("localStorage", {}).items():
+        if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
+            findings.append({
+                "type": "browser_storage",
+                "location": "localStorage",
+                "key": k,
+                "value": str(v)[:120]
+            })
+    
+    # sessionStorage
+    for k, v in browser_data.get("sessionStorage", {}).items():
+        if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
+            findings.append({
+                "type": "browser_storage",
+                "location": "sessionStorage",
+                "key": k,
+                "value": str(v)[:120]
+            })
+    
+    # insecure cookies
+    for c in browser_data.get("cookies", []):
+        if not c.get("secure") or not c.get("httpOnly"):
+            findings.append({
+                "type": "cookie_insecure",
+                "name": c["name"],
+                "secure": c.get("secure"),
+                "httpOnly": c.get("httpOnly")
+            })
+    
+    # exposed globals
+    for k, v in browser_data.get("globals", {}).items():
+        if v not in (None, "", False):
+            findings.append({
+                "type": "browser_global",
+                "key": k,
+                "value": str(v)[:120]
+            })
+    
+    return findings
