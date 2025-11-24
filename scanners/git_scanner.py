@@ -180,7 +180,8 @@ def scan_git_history(root, max_commits=100):
                                         "commit": commit[:12],
                                         "path": file_path,
                                         "pattern": name,
-                                        "snippet": snippet
+                                        "snippet": "[REDACTED]",
+                                        "original_length": len(snippet)
                                     }
                                     # Check if this exact finding already exists
                                     if not any(

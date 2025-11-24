@@ -74,17 +74,40 @@ def find_local_mitm_cert() -> Optional[Path]:
     return None
 
 def install_windows(cert_path: Path) -> bool:
-    """Use certutil to add to Root store (requires admin)."""
+    """Use certutil to add to Root store (requires admin). Falls back to GUI if needed."""
     if not shutil.which("certutil"):
         print(f"{Fore.YELLOW}certutil not found on PATH.{Style.RESET_ALL}")
         return False
+    
+    # Try certutil first (silent install)
     cmd = ["certutil", "-addstore", "Root", str(cert_path)]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode == 0:
         print(f"{Fore.GREEN}Certificate installed to Windows Root store.{Style.RESET_ALL}")
         return True
-    else:
-        print(f"{Fore.RED}certutil failed: {res.stderr}{Style.RESET_ALL}")
+    
+    # If certutil fails, open Windows certificate GUI for manual install
+    print(f"{Fore.YELLOW}certutil failed (may need admin rights): {res.stderr.strip()}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Opening Windows Certificate Manager GUI...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}In the wizard:{Style.RESET_ALL}")
+    print(f"  1. Click 'Next'")
+    print(f"  2. Select 'Place all certificates in the following store' → Browse")
+    print(f"  3. Choose 'Trusted Root Certification Authorities'")
+    print(f"  4. Click 'Next' → 'Finish' → Accept the security warning")
+    
+    try:
+        # Open certificate with default Windows handler (Certificate Import Wizard)
+        subprocess.run(["cmd", "/c", "start", "", str(cert_path)], check=True)
+        print(f"\n{Fore.GREEN}Certificate UI opened. Complete the installation wizard above.{Style.RESET_ALL}")
+        user_input = input(f"{Fore.YELLOW}Did you complete the installation? (y/n): {Style.RESET_ALL}").strip().lower()
+        if user_input == 'y':
+            print(f"{Fore.GREEN}Certificate installation confirmed by user.{Style.RESET_ALL}")
+            return True
+        else:
+            print(f"{Fore.RED}Certificate installation not completed.{Style.RESET_ALL}")
+            return False
+    except Exception as e:
+        print(f"{Fore.RED}Failed to open certificate GUI: {e}{Style.RESET_ALL}")
         return False
 
 def install_linux(cert_path: Path) -> bool:

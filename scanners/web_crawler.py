@@ -197,7 +197,8 @@ class LocalCrawler:
                         "type": "exposed_path",
                         "url": url,
                         "status": r.status_code,
-                        "snippet": r.text[:800]  # First 800 chars for context
+                        "snippet": "[REDACTED]",
+                        "original_length": len(r.text[:800])
                     })
             except Exception:
                 self.logger.debug("Probe failed for %s (expected for many)", url, exc_info=True)
@@ -250,7 +251,8 @@ class LocalCrawler:
                         "type": "response_pattern",
                         "url": url,
                         "pattern": name,
-                        "snippet": match.group(0)[:400]
+                        "snippet": "[REDACTED]",
+                        "original_length": len(match.group(0)[:400])
                     })
             except Exception:
                 continue
@@ -283,7 +285,8 @@ class LocalCrawler:
                             "url": url,
                             "header": k,
                             "pattern": name,
-                            "value": v
+                            "value": "[REDACTED]",
+                            "original_length": len(v)
                         })
             except Exception:
                 continue
@@ -304,7 +307,8 @@ class LocalCrawler:
                                     "url": url,
                                     "cookie": cookie_name,
                                     "pattern": name,
-                                    "snippet": cookie_header[:400]
+                                    "snippet": "[REDACTED]",
+                                    "original_length": len(cookie_header[:400])
                                 })
                     else:
                         self.logger.debug("Skipping known session/XSRF token: %s", cookie_name)
@@ -336,7 +340,8 @@ class LocalCrawler:
                                         "map": map_url,
                                         "source_index": i,
                                         "pattern": name,
-                                        "snippet": matched[:400]
+                                        "snippet": "[REDACTED]",
+                                        "original_length": len(matched[:400])
                                     })
                             except Exception:
                                 continue
@@ -419,7 +424,8 @@ class LocalCrawler:
                                         "type": "js_pattern",
                                         "url": link,
                                         "pattern": name,
-                                        "snippet": matched[:400]
+                                        "snippet": "[REDACTED]",
+                                        "original_length": len(matched[:400])
                                     })
                                 self.logger.info("JS pattern match: %s @ %s", name, link)
                         except Exception:

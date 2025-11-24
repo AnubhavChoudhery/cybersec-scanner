@@ -438,7 +438,8 @@ def _inspect_response(url: str, response, client: str):
                                 "pattern": pattern_name,
                                 "url": _redact(url),
                                 "description": f"Secret {pattern_name} leaked in response body",
-                                "snippet": matches[0][:200] if matches else None
+                                "snippet": "[REDACTED]",
+                                "original_length": len(matches[0][:200]) if matches else 0
                             })
         except Exception:
             pass

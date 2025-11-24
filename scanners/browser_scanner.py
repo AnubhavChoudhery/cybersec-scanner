@@ -128,7 +128,8 @@ def process_browser_findings(browser_data):
                 "type": "browser_storage",
                 "location": "localStorage",
                 "key": k,
-                "value": str(v)[:120]
+                "value": "[REDACTED]",
+                "original_length": len(str(v))
             })
     
     # sessionStorage
@@ -138,7 +139,8 @@ def process_browser_findings(browser_data):
                 "type": "browser_storage",
                 "location": "sessionStorage",
                 "key": k,
-                "value": str(v)[:120]
+                "value": "[REDACTED]",
+                "original_length": len(str(v))
             })
     
     # insecure cookies
@@ -157,7 +159,8 @@ def process_browser_findings(browser_data):
             findings.append({
                 "type": "browser_global",
                 "key": k,
-                "value": str(v)[:120]
+                "value": "[REDACTED]",
+                "original_length": len(str(v))
             })
     
     return findings
