@@ -74,45 +74,22 @@ def main():
     parser.add_argument("--enable-browser", action="store_true", help="Enable browser inspection")
     parser.add_argument("--enable-mitm", action="store_true", help="Enable MITM Network Inspection")
 
-    parser.add_argument("--max-commits", type=int, default=50)
-    parser.add_argument("--max-pages", type=int, default=100)
-
-    parser.add_argument("--mitm-port", type=int, default=8082)
-    parser.add_argument("--mitm-duration", type=int, help="Auto-stop MITM after N seconds")
-    parser.add_argument("--mitm-traffic", default=None, help="Path to mitm traffic NDJSON file (contains traffic + security findings)")
+    parser.add_argument("--max-commits", type=int, default=50, help="Max commits to scan in git history")
+    parser.add_argument("--mitm-traffic", required=True, help="Path to mitm traffic NDJSON file (will be cleared at start)")
 
     args = parser.parse_args()
 
-    # Resolve traffic NDJSON path (CLI arg -> ENV -> default based on backend path)
-    if args.mitm_traffic:
-        TRAFFIC_FILE = Path(args.mitm_traffic)
-    elif os.getenv('MITM_TRAFFIC_FILE'):
-        TRAFFIC_FILE = Path(os.getenv('MITM_TRAFFIC_FILE'))
-    else:
-        # Default: try to find in common backend locations
-        candidates = [
-            Path.cwd() / "mitm_traffic.ndjson",
-            Path.cwd().parent / "Questionnaire_Gen_Prod" / "backend" / "app" / "mitm_traffic.ndjson",
-            Path.cwd().parent / "Questionnaire_Gen_Prod" / "backend" / "mitm_traffic.ndjson",
-        ]
-        TRAFFIC_FILE = None
-        for candidate in candidates:
-            if candidate.exists():
-                TRAFFIC_FILE = candidate
-                break
-        if not TRAFFIC_FILE:
-            TRAFFIC_FILE = candidates[0]  # use first as default
-
+    # Use user-specified traffic file path
+    TRAFFIC_FILE = Path(args.mitm_traffic)
     print(f"Using MITM traffic file: {TRAFFIC_FILE}")
     
-    # Ensure traffic file exists (create empty file if not)
+    # Clear traffic file from previous runs (truncate to prevent data carryover)
     try:
-        if not TRAFFIC_FILE.exists():
-            TRAFFIC_FILE.parent.mkdir(parents=True, exist_ok=True)
-            TRAFFIC_FILE.write_text("")
-            print(f"{Fore.YELLOW}[INFO] Created empty traffic file: {TRAFFIC_FILE}{Style.RESET_ALL}")
+        TRAFFIC_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TRAFFIC_FILE.write_text("")  # Truncate file
+        print(f"{Fore.GREEN}[OK] Cleared traffic file for fresh run{Style.RESET_ALL}")
     except Exception as e:
-        print(f"{Fore.YELLOW}[WARN] Could not create traffic file: {e}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}[WARN] Could not clear traffic file: {e}{Style.RESET_ALL}")
 
     all_findings = []
     stats = {
@@ -131,7 +108,7 @@ def main():
     print()
 
     # ==========================================================================
-    # PHASE 1: GIT HISTORY SCAN
+    # PHASE 1: GIT HISTORY SCAN (doesn't require running app)
     # ==========================================================================
     if args.enable_git:
         print(f"{Fore.GREEN}[PHASE 1] Git History Scan{Style.RESET_ALL}")
@@ -153,132 +130,32 @@ def main():
         print(f"{Fore.LIGHTBLACK_EX}[PHASE 1] Git Scan - SKIPPED{Style.RESET_ALL}\n")
 
     # ==========================================================================
-    # PHASE 2: WEB CRAWLER
-    # ==========================================================================
-    if args.enable_crawler and LocalCrawler:
-        print(f"{Fore.GREEN}[PHASE 2] Web Crawler{Style.RESET_ALL}")
-        try:
-            crawler = LocalCrawler(args.target, max_pages=args.max_pages)
-            crawler.crawl()
-
-            stats["crawler_issues"] = len(crawler.findings)
-            all_findings.extend([
-                {
-                    "type": "crawler_issue",
-                    "url": f.get("url"),
-                    "description": f.get("description"),
-                    "details": f
-                }
-                for f in crawler.findings
-            ])
-
-            print(f"{Fore.CYAN}[OK] Crawled {len(crawler.visited)} pages{Style.RESET_ALL}")
-            if crawler.findings:
-                print(f"{Fore.YELLOW}[!] {len(crawler.findings)} issues found{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.GREEN}[OK] No crawler issues{Style.RESET_ALL}")
-
-        except Exception as e:
-            print(f"{Fore.RED}[ERROR] Crawler failed: {e}{Style.RESET_ALL}")
-        print()
-
-    else:
-        print(f"{Fore.LIGHTBLACK_EX}[PHASE 2] Crawler - SKIPPED{Style.RESET_ALL}\n")
-
-    # ==========================================================================
-    # PHASE 3: BROWSER RUNTIME
-    # ==========================================================================
-    if args.enable_browser:
-        print(f"{Fore.GREEN}[PHASE 3] Browser Runtime Checks{Style.RESET_ALL}")
-        try:
-            br = playwright_inspect(args.target)
-            if "error" in br:
-                print(f"{Fore.YELLOW}[WARN] Browser unavailable: {br['error']}{Style.RESET_ALL}")
-            else:
-                findings = []
-
-                # localStorage
-                for k, v in br.get("localStorage", {}).items():
-                    if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
-                        findings.append({
-                            "type": "browser_storage",
-                            "location": "localStorage",
-                            "key": k,
-                            "value": str(v)[:120]
-                        })
-
-                # sessionStorage
-                for k, v in br.get("sessionStorage", {}).items():
-                    if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
-                        findings.append({
-                            "type": "browser_storage",
-                            "location": "sessionStorage",
-                            "key": k,
-                            "value": str(v)[:120]
-                        })
-
-                # insecure cookies
-                for c in br.get("cookies", []):
-                    if not c.get("secure") or not c.get("httpOnly"):
-                        findings.append({
-                            "type": "cookie_insecure",
-                            "name": c["name"],
-                            "secure": c.get("secure"),
-                            "httpOnly": c.get("httpOnly")
-                        })
-
-                # exposed globals
-                for k, v in br.get("globals", {}).items():
-                    if v not in (None, "", False):
-                        findings.append({
-                            "type": "browser_global",
-                            "key": k,
-                            "value": str(v)[:120]
-                        })
-
-                stats["browser_issues"] = len(findings)
-                all_findings.extend(findings)
-
-                if findings:
-                    print(f"{Fore.YELLOW}[!] {len(findings)} browser issues detected{Style.RESET_ALL}")
-                else:
-                    print(f"{Fore.GREEN}[OK] No browser issues{Style.RESET_ALL}")
-
-        except Exception as e:
-            print(f"{Fore.RED}[ERROR] Browser scan failed: {e}{Style.RESET_ALL}")
-        print()
-
-    else:
-        print(f"{Fore.LIGHTBLACK_EX}[PHASE 3] Browser - SKIPPED{Style.RESET_ALL}\n")
-
-    # ==========================================================================
-    # PHASE 4: MITM INSPECTION (run_mitm_dump from network_scanner.py)
+    # PHASE 2: MITM INSPECTION (STARTS YOUR APP - must run before browser/crawler)
     # ==========================================================================
     mitm_results = None
 
     if args.enable_mitm:
-        print(f"{Fore.GREEN}[PHASE 4] MITM HTTPS Network Inspection{Style.RESET_ALL}")
-        print(f"Using port {args.mitm_port}\n")
+        print(f"{Fore.GREEN}[PHASE 2] MITM HTTPS Network Inspection{Style.RESET_ALL}")
+        print(f"Note: This will start your backend app. MITM proxy uses inject_mitm_proxy.py")
+        print(f"      (port from MITM_PROXY_PORT env or 8082)")
+        print(f"{Fore.CYAN}[ACTION REQUIRED] Start your backend app now, then press Ctrl+C when done testing{Style.RESET_ALL}\n")
 
         try:
+            # Start standalone mitmproxy addon (for additional traffic capture)
             proc, results_path = run_mitm_dump(
-                port=args.mitm_port,
-                duration=args.mitm_duration
+                port=8082,  # Default port
+                duration=None  # Interactive mode (Ctrl+C to stop)
             )
 
             if proc is None:
                 print(f"{Fore.RED}[ERROR] MITM failed to launch: {results_path}{Style.RESET_ALL}")
             else:
-                if args.mitm_duration:
-                    print(f"{Fore.CYAN}Auto-stopping MITM after {args.mitm_duration}s...{Style.RESET_ALL}")
-                    time.sleep(args.mitm_duration)
-                else:
-                    print(f"{Fore.YELLOW}[!] MITM running — exercise your app then press Ctrl+C{Style.RESET_ALL}")
-                    try:
-                        while proc.poll() is None:
-                            time.sleep(1)
-                    except KeyboardInterrupt:
-                        print(f"{Fore.YELLOW}Stopping MITM...{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}[!] MITM running — exercise your app then press Ctrl+C{Style.RESET_ALL}")
+                try:
+                    while proc.poll() is None:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    print(f"{Fore.YELLOW}Stopping MITM...{Style.RESET_ALL}")
 
                 mitm_results = stop_mitm_dump(proc, results_path)
 
@@ -319,19 +196,10 @@ def main():
                                             })
                                         elif stage == "mitm_bypass":
                                             bypassed += 1
-                                            # Optionally add bypasses too (commented by default to reduce noise)
-                                            # traffic_findings.append({
-                                            #     "type": "mitm_bypassed_request",
-                                            #     "severity": "INFO",
-                                            #     "timestamp": entry.get("ts"),
-                                            #     "timestamp_human": entry.get("timestamp"),
-                                            #     "client": client,
-                                            #     "method": method,
-                                            #     "url": url,
-                                            #     "description": f"Bypassed request: {method} {url} (client={client})"
-                                            # })
                                     except json.JSONDecodeError:
-                                        continue                    # Add traffic findings to all_findings
+                                        continue
+                    
+                    # Add traffic findings to all_findings
                     all_findings.extend(traffic_findings)
                     stats["mitm_proxied"] = proxied
                     stats["mitm_bypassed"] = bypassed
@@ -394,7 +262,112 @@ def main():
         print()
 
     else:
-        print(f"{Fore.LIGHTBLACK_EX}[PHASE 4] MITM - SKIPPED{Style.RESET_ALL}\n")
+        print(f"{Fore.LIGHTBLACK_EX}[PHASE 2] MITM - SKIPPED{Style.RESET_ALL}\n")
+
+    # ==========================================================================
+    # PHASE 3: BROWSER RUNTIME (requires running app)
+    # ==========================================================================
+    if args.enable_browser:
+        print(f"{Fore.GREEN}[PHASE 3] Browser Runtime Checks{Style.RESET_ALL}")
+        try:
+            crawler = LocalCrawler(args.target, max_pages=100)  # Default max pages
+            crawler.crawl()
+
+            # Filter out non-issue findings (exclude successful status codes)
+            real_issues = [
+                f for f in crawler.findings 
+                if f.get("type") != "status" or f.get("status", 200) >= 400
+            ]
+            
+            stats["crawler_issues"] = len(real_issues)
+            all_findings.extend([
+                {
+                    "type": "crawler_issue",
+                    "url": f.get("url"),
+                    "description": f.get("description"),
+                    "details": f
+                }
+                for f in real_issues
+            ])
+
+            print(f"{Fore.CYAN}[OK] Crawled {len(crawler.visited)} pages{Style.RESET_ALL}")
+            if real_issues:
+                print(f"{Fore.YELLOW}[!] {len(real_issues)} issues found{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.GREEN}[OK] No crawler issues{Style.RESET_ALL}")
+
+        except Exception as e:
+            print(f"{Fore.RED}[ERROR] Browser scan failed: {e}{Style.RESET_ALL}")
+        print()
+
+    else:
+        print(f"{Fore.LIGHTBLACK_EX}[PHASE 3] Browser - SKIPPED{Style.RESET_ALL}\n")
+
+    # ==========================================================================
+    # PHASE 4: WEB CRAWLER (requires running app, scans all JS files)
+    # ==========================================================================
+    if args.enable_crawler and LocalCrawler:
+        print(f"{Fore.GREEN}[PHASE 4] Web Crawler (Full JS Scanning){Style.RESET_ALL}")
+        try:
+            br = playwright_inspect(args.target)
+            if "error" in br:
+                print(f"{Fore.YELLOW}[WARN] Browser unavailable: {br['error']}{Style.RESET_ALL}")
+            else:
+                findings = []
+
+                # localStorage
+                for k, v in br.get("localStorage", {}).items():
+                    if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
+                        findings.append({
+                            "type": "browser_storage",
+                            "location": "localStorage",
+                            "key": k,
+                            "value": str(v)[:120]
+                        })
+
+                # sessionStorage
+                for k, v in br.get("sessionStorage", {}).items():
+                    if any(t in k.lower() for t in ["token", "key", "secret", "api"]):
+                        findings.append({
+                            "type": "browser_storage",
+                            "location": "sessionStorage",
+                            "key": k,
+                            "value": str(v)[:120]
+                        })
+
+                # insecure cookies
+                for c in br.get("cookies", []):
+                    if not c.get("secure") or not c.get("httpOnly"):
+                        findings.append({
+                            "type": "cookie_insecure",
+                            "name": c["name"],
+                            "secure": c.get("secure"),
+                            "httpOnly": c.get("httpOnly")
+                        })
+
+                # exposed globals
+                for k, v in br.get("globals", {}).items():
+                    if v not in (None, "", False):
+                        findings.append({
+                            "type": "browser_global",
+                            "key": k,
+                            "value": str(v)[:120]
+                        })
+
+                stats["browser_issues"] = len(findings)
+                all_findings.extend(findings)
+
+                if findings:
+                    print(f"{Fore.YELLOW}[!] {len(findings)} browser issues detected{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.GREEN}[OK] No browser issues{Style.RESET_ALL}")
+
+        except Exception as e:
+            print(f"{Fore.RED}[ERROR] Crawler failed: {e}{Style.RESET_ALL}")
+        print()
+
+    else:
+        print(f"{Fore.LIGHTBLACK_EX}[PHASE 4] Crawler - SKIPPED{Style.RESET_ALL}\n")
 
     # ==========================================================================
     # FINAL REPORT

@@ -11,19 +11,12 @@ Provides scanners for:
 from .git_scanner import scan_git_history
 from .web_crawler import LocalCrawler
 from .browser_scanner import playwright_inspect
-from .network_scanner import (
-    run_mitm_proxy_background,
-    stop_mitm_proxy,
-    print_mitm_instructions,
-    get_proxied_session
-)
+from .network_scanner import run_mitm_dump, stop_mitm_dump
 
 __all__ = [
     'scan_git_history',
     'LocalCrawler',
     'playwright_inspect',
-    'run_mitm_proxy_background',
-    'stop_mitm_proxy',
-    'print_mitm_instructions',
-    'get_proxied_session',
+    'run_mitm_dump',
+    'stop_mitm_dump',
 ]

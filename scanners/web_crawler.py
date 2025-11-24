@@ -111,8 +111,8 @@ class LocalCrawler:
             self.ignore_headers = {"etag", "server", "date", "content-length"}
         else:
             self.ignore_headers = {h.lower() for h in ignore_headers}
-        # max JS size (bytes) to scan; skip very large bundles by default
-        self.max_js_size = int(max_js_size)
+        # max JS size (bytes) to scan; skip very large bundles by default (None=no limit)
+        self.max_js_size = int(max_js_size) if max_js_size is not None else None
 
         # Thread-safe state
         self._lock = threading.Lock()
@@ -404,8 +404,8 @@ class LocalCrawler:
                             size = len(rr_text)
                         self.logger.info("Processing JS/map: %s (%d bytes)", link, size)
 
-                        # Skip very large JS bundles to avoid long-running scans
-                        if size > self.max_js_size:
+                        # Skip very large JS bundles to avoid long-running scans (if limit set)
+                        if self.max_js_size is not None and size > self.max_js_size:
                             self.logger.info("Skipping JS/map %s because size %d > max_js_size %d", link, size, self.max_js_size)
                             continue
 
