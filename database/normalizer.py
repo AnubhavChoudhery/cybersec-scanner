@@ -102,6 +102,19 @@ class DatabaseNormalizer:
             
         Raises:
             DatabaseError: If graph_obj is invalid or missing required attributes
+            
+        Example:
+            >>> from rag.knowledge_graph import KnowledgeGraph
+            >>> from database.normalizer import DatabaseNormalizer
+            >>> 
+            >>> # Build graph from audit report
+            >>> kg = KnowledgeGraph()
+            >>> kg.build_from_audit(Path("audit_report.json"))
+            >>> 
+            >>> # Normalize to database
+            >>> normalizer = DatabaseNormalizer("findings.db")
+            >>> stats = normalizer.normalize_from_graph(kg)
+            >>> print(f"Inserted {stats['findings']} findings")
         """
         # Validate input
         if graph_obj is None:
@@ -238,6 +251,19 @@ class DatabaseNormalizer:
             
         Raises:
             ValidationError: If severity is not a valid value
+            
+        Example:
+            >>> from database.normalizer import DatabaseNormalizer
+            >>> 
+            >>> # Query all critical findings
+            >>> normalizer = DatabaseNormalizer("findings.db")
+            >>> critical = normalizer.query_findings(severity="CRITICAL")
+            >>> print(f"Found {len(critical)} critical issues")
+            >>> 
+            >>> # Query XSS findings (CWE-79)
+            >>> xss = normalizer.query_findings(cwe_id="CWE-79", limit=10)
+            >>> for finding in xss:
+            ...     print(f"{finding['id']}: {finding['summary']}")
         """
         # Validate severity
         if severity is not None:

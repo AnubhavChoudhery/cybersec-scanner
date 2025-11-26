@@ -222,6 +222,19 @@ class KnowledgeGraph:
         Raises:
             FileNotFoundError: If audit file doesn't exist
             GraphError: If audit file is invalid or empty
+            
+        Example:
+            >>> from pathlib import Path
+            >>> from rag.knowledge_graph import KnowledgeGraph
+            >>> 
+            >>> # Build graph from audit report
+            >>> kg = KnowledgeGraph()
+            >>> kg.build_from_audit(Path("audit_report.json"))
+            >>> 
+            >>> # Check what was loaded
+            >>> stats = kg.stats()
+            >>> print(f"Loaded {stats['findings']} findings")
+            >>> print(f"Mapped to {stats['cwe_nodes']} CWE categories")
         """
         # Validate file exists
         if not audit_path.exists():
@@ -275,7 +288,27 @@ class KnowledgeGraph:
             self.add_finding(normalized)
 
     def save(self, path: Optional[Path] = None) -> Path:
-        """Save graph to pickle file."""
+        """
+        Save graph to pickle file.
+        
+        Args:
+            path: Optional path to save graph (defaults to GRAPH_PATH)
+            
+        Returns:
+            Path where graph was saved
+            
+        Example:
+            >>> from rag.knowledge_graph import KnowledgeGraph
+            >>> 
+            >>> # Build and save graph
+            >>> kg = KnowledgeGraph()
+            >>> kg.build_from_audit(Path("audit_report.json"))
+            >>> saved_path = kg.save()
+            >>> print(f"Graph saved to: {saved_path}")
+            >>> 
+            >>> # Or save to custom location
+            >>> kg.save(Path("backup_graph.gpickle"))
+        """
         path = path or GRAPH_PATH
         try:
             nx.write_gpickle(self.g, path)
@@ -299,6 +332,20 @@ class KnowledgeGraph:
         Raises:
             FileNotFoundError: If graph file doesn't exist
             GraphError: If graph file is corrupted
+            
+        Example:
+            >>> from rag.knowledge_graph import KnowledgeGraph
+            >>> 
+            >>> # Load previously saved graph
+            >>> kg = KnowledgeGraph()
+            >>> kg.load()  # Loads from default path
+            >>> 
+            >>> # Or specify custom path
+            >>> kg.load(Path("custom_graph.gpickle"))
+            >>> 
+            >>> # Use the loaded graph
+            >>> stats = kg.stats()
+            >>> print(f"Graph has {stats['nodes']} nodes")
         """
         path = path or GRAPH_PATH
         if not Path(path).exists():
@@ -329,7 +376,26 @@ class KnowledgeGraph:
                 raise GraphError(f"Failed to load graph from {path}: {e}")
 
     def stats(self) -> Dict[str, int]:
-        """Get statistics about the graph."""
+        """
+        Get statistics about the graph.
+        
+        Returns:
+            Dictionary with counts of different node types and edges
+            
+        Example:
+            >>> from rag.knowledge_graph import KnowledgeGraph
+            >>> 
+            >>> kg = KnowledgeGraph()
+            >>> kg.build_from_audit(Path("audit_report.json"))
+            >>> 
+            >>> # Get comprehensive statistics
+            >>> stats = kg.stats()
+            >>> print(f"Findings: {stats['findings']}")
+            >>> print(f"CWE Categories: {stats['cwes']}")
+            >>> print(f"OWASP Categories: {stats['owasps']}")
+            >>> print(f"Mitigations: {stats['mitigations']}")
+            >>> print(f"Total Relationships: {stats['edges']}")
+        """
         findings = len([n for n, d in self.g.nodes(data=True) if d.get("label") == "Finding"])
         endpoints = len([n for n, d in self.g.nodes(data=True) if d.get("label") == "Endpoint"])
         cwes = len([n for n, d in self.g.nodes(data=True) if d.get("label") == "CWE"])

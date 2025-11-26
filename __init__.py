@@ -99,8 +99,17 @@ def scan(
     
     Example:
         >>> from cybersec_scanner import scan
+        >>> 
+        >>> # Scan git repository
+        >>> report = scan(git_repo=".")
+        >>> print(f"Found {len(report['findings'])} issues in git")
+        >>> 
+        >>> # Scan web application
+        >>> report = scan(url="https://example.com")
+        >>> 
+        >>> # Scan both
         >>> report = scan(git_repo=".", url="https://example.com")
-        >>> print(f"Found {len(report['findings'])} issues")
+        >>> print(f"Total findings: {len(report['findings'])}")
     """
     import json
     from pathlib import Path
@@ -160,8 +169,21 @@ def query(
     
     Example:
         >>> from cybersec_scanner import query
+        >>> 
+        >>> # Query for specific vulnerability types
         >>> answer = query("Show me all API key leaks")
         >>> print(answer)
+        >>> 
+        >>> # Query for severity-based issues
+        >>> answer = query("What are the critical findings?", k=10)
+        >>> print(answer)
+        >>> 
+        >>> # Use custom audit report
+        >>> answer = query(
+        ...     "Explain SQL injection risks",
+        ...     audit_report="custom_audit.json",
+        ...     model="llama2"
+        ... )
     """
     from pathlib import Path
     from pathlib import Path

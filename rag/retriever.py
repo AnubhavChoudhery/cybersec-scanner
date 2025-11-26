@@ -27,6 +27,16 @@ class Retriever:
             
         Raises:
             RetrieverError: If graph is not loaded or invalid
+            
+        Example:
+            >>> from pathlib import Path
+            >>> from rag.retriever import Retriever
+            >>> 
+            >>> # Initialize with default graph path
+            >>> retriever = Retriever()
+            >>> 
+            >>> # Or specify custom graph
+            >>> retriever = Retriever(Path("knowledge_graph.gpickle"))
         """
         self.kg = KnowledgeGraph()
         if graph_path:
@@ -54,6 +64,20 @@ class Retriever:
             
         Raises:
             ValidationError: If query is empty or k is invalid
+            
+        Example:
+            >>> from rag.retriever import Retriever
+            >>> 
+            >>> retriever = Retriever()
+            >>> 
+            >>> # Retrieve XSS vulnerabilities
+            >>> results = retriever.retrieve("XSS vulnerabilities", k=10)
+            >>> for finding in results:
+            ...     print(f"{finding['severity']}: {finding['summary']}")
+            >>> 
+            >>> # Retrieve SQL injection findings
+            >>> results = retriever.retrieve("SQL injection", k=5)
+            >>> print(f"Found {len(results)} SQL injection issues")
         """
         # Validate query
         if not query or not query.strip():
