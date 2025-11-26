@@ -1,0 +1,43 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy isort
+        pip install -e .
+    
+    - name: Check code formatting with Black
+      run: |
+        black --check cybersec_scanner/ --line-length 100
+    
+    - name: Check import sorting with isort
+      run: |
+        isort --check-only cybersec_scanner/
+    
+    - name: Lint with flake8
+      run: |
+        flake8 cybersec_scanner/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 cybersec_scanner/ --count --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Type check with mypy
+      run: |
+        mypy cybersec_scanner/ --ignore-missing-imports
+      continue-on-error: true

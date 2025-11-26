@@ -35,6 +35,7 @@ audit_report.json
 # Documentation (exclude all .md except README.md)
 *.md
 !README.md
+!CONTRIBUTING.md
 
 # Configuration files (user-specific)
 cybersec-config.yaml
