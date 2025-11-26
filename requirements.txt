@@ -53,3 +53,4 @@ wsproto==1.2.0
 zstandard==0.23.0
 networkx==3.1
 ollama==0.1.7
+pytest==8.0.0
