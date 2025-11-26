@@ -1,0 +1,223 @@
+{
+  "comment": "OWASP Top 10 2021 categories with CWE mappings and mitigation strategies",
+  "owasp_categories": [
+    {
+      "owasp_id": "A01",
+      "name": "Broken Access Control",
+      "year": 2021,
+      "rank": 1,
+      "description": "Restrictions on what authenticated users are allowed to do are not properly enforced.",
+      "cwes": ["CWE-200", "CWE-201", "CWE-352", "CWE-425", "CWE-639"],
+      "mitigation_ids": ["mit-access-control", "mit-least-privilege"]
+    },
+    {
+      "owasp_id": "A02",
+      "name": "Cryptographic Failures",
+      "year": 2021,
+      "rank": 2,
+      "description": "Failures related to cryptography which often leads to sensitive data exposure.",
+      "cwes": ["CWE-259", "CWE-311", "CWE-312", "CWE-319", "CWE-321", "CWE-326", "CWE-327"],
+      "mitigation_ids": ["mit-encryption", "mit-secure-storage"]
+    },
+    {
+      "owasp_id": "A03",
+      "name": "Injection",
+      "year": 2021,
+      "rank": 3,
+      "description": "User-supplied data is not validated, filtered, or sanitized by the application.",
+      "cwes": ["CWE-79", "CWE-89", "CWE-94", "CWE-917"],
+      "mitigation_ids": ["mit-input-validation", "mit-parameterized-queries"]
+    },
+    {
+      "owasp_id": "A04",
+      "name": "Insecure Design",
+      "year": 2021,
+      "rank": 4,
+      "description": "Missing or ineffective control design.",
+      "cwes": ["CWE-209", "CWE-256", "CWE-501", "CWE-522"],
+      "mitigation_ids": ["mit-secure-design", "mit-threat-modeling"]
+    },
+    {
+      "owasp_id": "A05",
+      "name": "Security Misconfiguration",
+      "year": 2021,
+      "rank": 5,
+      "description": "Missing appropriate security hardening or improperly configured permissions.",
+      "cwes": ["CWE-16", "CWE-611", "CWE-776"],
+      "mitigation_ids": ["mit-hardening", "mit-config-management"]
+    },
+    {
+      "owasp_id": "A06",
+      "name": "Vulnerable and Outdated Components",
+      "year": 2021,
+      "rank": 6,
+      "description": "Using components with known vulnerabilities.",
+      "cwes": ["CWE-1104"],
+      "mitigation_ids": ["mit-dependency-scanning", "mit-patching"]
+    },
+    {
+      "owasp_id": "A07",
+      "name": "Identification and Authentication Failures",
+      "year": 2021,
+      "rank": 7,
+      "description": "Confirmation of the user's identity, authentication, and session management is critical to protect against authentication-related attacks.",
+      "cwes": ["CWE-259", "CWE-287", "CWE-306", "CWE-521", "CWE-523", "CWE-798", "CWE-916"],
+      "mitigation_ids": ["mit-mfa", "mit-session-management", "mit-secrets-management"]
+    },
+    {
+      "owasp_id": "A08",
+      "name": "Software and Data Integrity Failures",
+      "year": 2021,
+      "rank": 8,
+      "description": "Code and infrastructure that does not protect against integrity violations.",
+      "cwes": ["CWE-502", "CWE-829"],
+      "mitigation_ids": ["mit-code-signing", "mit-integrity-checks"]
+    },
+    {
+      "owasp_id": "A09",
+      "name": "Security Logging and Monitoring Failures",
+      "year": 2021,
+      "rank": 9,
+      "description": "Insufficient logging and monitoring, coupled with missing or ineffective integration with incident response.",
+      "cwes": ["CWE-117", "CWE-223", "CWE-532", "CWE-778"],
+      "mitigation_ids": ["mit-logging", "mit-monitoring"]
+    },
+    {
+      "owasp_id": "A10",
+      "name": "Server-Side Request Forgery (SSRF)",
+      "year": 2021,
+      "rank": 10,
+      "description": "SSRF flaws occur whenever a web application is fetching a remote resource without validating the user-supplied URL.",
+      "cwes": ["CWE-918"],
+      "mitigation_ids": ["mit-url-validation", "mit-network-segmentation"]
+    }
+  ],
+  "mitigations": [
+    {
+      "id": "mit-access-control",
+      "name": "Implement Proper Access Control",
+      "description": "Deny by default, implement proper RBAC, validate permissions server-side",
+      "code_examples": ["check_permissions.py", "rbac_decorator.py"]
+    },
+    {
+      "id": "mit-least-privilege",
+      "name": "Principle of Least Privilege",
+      "description": "Grant minimum necessary permissions, regular access reviews",
+      "code_examples": ["least_privilege.py"]
+    },
+    {
+      "id": "mit-encryption",
+      "name": "Use Strong Encryption",
+      "description": "Encrypt sensitive data at rest and in transit using industry-standard algorithms",
+      "code_examples": ["encrypt_data.py", "tls_config.py"]
+    },
+    {
+      "id": "mit-secure-storage",
+      "name": "Secure Credential Storage",
+      "description": "Use environment variables, secrets managers (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault)",
+      "code_examples": ["aws_secrets_manager.py", "env_config.py"]
+    },
+    {
+      "id": "mit-input-validation",
+      "name": "Validate and Sanitize Input",
+      "description": "Whitelist validation, escape output, use prepared statements",
+      "code_examples": ["input_validation.py", "sanitize.py"]
+    },
+    {
+      "id": "mit-parameterized-queries",
+      "name": "Use Parameterized Queries",
+      "description": "Prevent SQL injection with prepared statements and ORM",
+      "code_examples": ["parameterized_sql.py", "orm_example.py"]
+    },
+    {
+      "id": "mit-secure-design",
+      "name": "Secure by Design",
+      "description": "Security requirements gathering, secure design patterns, defense in depth",
+      "code_examples": ["security_requirements.md"]
+    },
+    {
+      "id": "mit-threat-modeling",
+      "name": "Threat Modeling",
+      "description": "STRIDE analysis, attack surface mapping, security architecture review",
+      "code_examples": ["threat_model_template.md"]
+    },
+    {
+      "id": "mit-hardening",
+      "name": "System Hardening",
+      "description": "Remove default credentials, disable unnecessary services, apply security patches",
+      "code_examples": ["hardening_checklist.md", "secure_defaults.py"]
+    },
+    {
+      "id": "mit-config-management",
+      "name": "Configuration Management",
+      "description": "Infrastructure as Code, automated configuration validation",
+      "code_examples": ["terraform_security.tf", "ansible_hardening.yml"]
+    },
+    {
+      "id": "mit-dependency-scanning",
+      "name": "Dependency Scanning",
+      "description": "Automated vulnerability scanning (Snyk, Dependabot, npm audit)",
+      "code_examples": ["requirements_security.txt", "package_lock_audit.sh"]
+    },
+    {
+      "id": "mit-patching",
+      "name": "Regular Patching",
+      "description": "Maintain inventory, automate updates where possible, prioritize critical patches",
+      "code_examples": ["update_dependencies.sh"]
+    },
+    {
+      "id": "mit-mfa",
+      "name": "Multi-Factor Authentication",
+      "description": "Implement MFA for all accounts, especially privileged access",
+      "code_examples": ["mfa_setup.py", "totp_validation.py"]
+    },
+    {
+      "id": "mit-session-management",
+      "name": "Secure Session Management",
+      "description": "Secure session IDs, proper timeout, regenerate on privilege change",
+      "code_examples": ["session_config.py", "jwt_security.py"]
+    },
+    {
+      "id": "mit-secrets-management",
+      "name": "Secrets Management",
+      "description": "Never hardcode credentials, rotate secrets regularly, use secrets managers",
+      "code_examples": ["rotate_credentials.py", "secrets_rotation.sh"]
+    },
+    {
+      "id": "mit-code-signing",
+      "name": "Code Signing",
+      "description": "Sign releases, verify signatures before deployment",
+      "code_examples": ["sign_release.sh", "verify_signature.sh"]
+    },
+    {
+      "id": "mit-integrity-checks",
+      "name": "Integrity Validation",
+      "description": "Hash verification, digital signatures, checksums",
+      "code_examples": ["verify_checksum.py", "file_integrity.py"]
+    },
+    {
+      "id": "mit-logging",
+      "name": "Security Logging",
+      "description": "Log authentication events, access control failures, input validation failures",
+      "code_examples": ["security_logger.py", "audit_log.py"]
+    },
+    {
+      "id": "mit-monitoring",
+      "name": "Security Monitoring",
+      "description": "Real-time alerts, SIEM integration, anomaly detection",
+      "code_examples": ["monitoring_config.py", "alert_rules.yml"]
+    },
+    {
+      "id": "mit-url-validation",
+      "name": "URL Validation",
+      "description": "Whitelist allowed domains, validate and sanitize URLs",
+      "code_examples": ["url_validator.py", "allowed_hosts.py"]
+    },
+    {
+      "id": "mit-network-segmentation",
+      "name": "Network Segmentation",
+      "description": "Isolate sensitive systems, firewall rules, VPC configuration",
+      "code_examples": ["network_policy.yml", "firewall_rules.tf"]
+    }
+  ]
+}

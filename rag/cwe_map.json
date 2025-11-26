@@ -1,61 +1,79 @@
 {
-  "comment": "Small starter mapping of scanner finding types to CWE IDs for graph enrichment",
+  "comment": "Comprehensive mapping of scanner finding types to CWE IDs for graph enrichment. Maps by finding type (not specific pattern names) to support user-defined patterns.",
   "mappings": [
     {
-      "finding_types": ["api_key_in_header", "api_key_in_url", "git_pattern", "AWS_ACCESS_KEY", "GITHUB_PAT", "OPENAI_API_KEY"],
+      "finding_types": ["api_key_in_header", "api_key_in_url", "git_pattern"],
       "cwe_id": "CWE-798",
       "cwe_name": "Use of Hard-coded Credentials",
       "severity": "CRITICAL",
-      "description": "The software contains hard-coded credentials, such as a password or cryptographic key."
+      "description": "The software contains hard-coded credentials, such as a password or cryptographic key. This covers all API keys, tokens, and secrets detected by pattern matching regardless of the specific service.",
+      "attack_vectors": ["credential_theft", "unauthorized_access", "privilege_escalation"],
+      "notes": "Matches ANY api key pattern (AWS, GitHub, OpenAI, etc.) including user-defined patterns. The scanner finding type 'git_pattern' covers all secrets found in git history."
     },
     {
       "finding_types": ["plaintext_password", "password_in_body"],
       "cwe_id": "CWE-259",
       "cwe_name": "Use of Hard-coded Password",
       "severity": "CRITICAL",
-      "description": "The software contains a hard-coded password which compromises system security."
+      "description": "The software contains a hard-coded password which compromises system security.",
+      "attack_vectors": ["authentication_bypass", "credential_stuffing"]
     },
     {
       "finding_types": ["url_embedded_credentials", "basic_auth_header"],
       "cwe_id": "CWE-523",
       "cwe_name": "Unprotected Transport of Credentials",
       "severity": "HIGH",
-      "description": "Login pages or authentication endpoints do not use adequate measures to protect credentials during transmission."
+      "description": "Login pages or authentication endpoints do not use adequate measures to protect credentials during transmission.",
+      "attack_vectors": ["man_in_the_middle", "network_sniffing"]
     },
     {
       "finding_types": ["secret_in_response_body", "secret_in_response_header", "response_pattern"],
       "cwe_id": "CWE-200",
       "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
       "severity": "HIGH",
-      "description": "The product exposes sensitive information to an actor that is not explicitly authorized to have access to that information."
+      "description": "The product exposes sensitive information to an actor that is not explicitly authorized to have access to that information.",
+      "attack_vectors": ["information_disclosure", "data_leakage"]
     },
     {
       "finding_types": ["browser_storage", "cookie_insecure"],
       "cwe_id": "CWE-312",
       "cwe_name": "Cleartext Storage of Sensitive Information",
       "severity": "MEDIUM",
-      "description": "The application stores sensitive information in cleartext."
+      "description": "The application stores sensitive information in cleartext.",
+      "attack_vectors": ["local_storage_theft", "xss_data_exfiltration"]
     },
     {
-      "finding_types": ["exposed_path", "js_pattern"],
+      "finding_types": ["exposed_path", "js_pattern", "sourcemap_pattern"],
       "cwe_id": "CWE-540",
       "cwe_name": "Inclusion of Sensitive Information in Source Code",
       "severity": "MEDIUM",
-      "description": "Source code comments or configuration files may contain sensitive information such as passwords or API keys."
+      "description": "Source code comments or configuration files may contain sensitive information such as passwords or API keys.",
+      "attack_vectors": ["source_code_review", "client_side_analysis"],
+      "notes": "Covers secrets found in JavaScript files, source maps, and exposed config files."
     },
     {
-      "finding_types": ["JWT_TOKEN", "BEARER_TOKEN"],
-      "cwe_id": "CWE-311",
-      "cwe_name": "Missing Encryption of Sensitive Data",
-      "severity": "HIGH",
-      "description": "The software does not encrypt sensitive or critical information before storage or transmission."
+      "finding_types": ["header_pattern"],
+      "cwe_id": "CWE-548",
+      "cwe_name": "Exposure of Information Through Directory Listing",
+      "severity": "LOW",
+      "description": "Server configuration exposes sensitive headers or metadata.",
+      "attack_vectors": ["reconnaissance", "information_gathering"]
     },
     {
-      "finding_types": ["DB_CONNECTION_STRING", "MONGODB_URI", "POSTGRES_URI"],
-      "cwe_id": "CWE-798",
-      "cwe_name": "Use of Hard-coded Credentials",
-      "severity": "CRITICAL",
-      "description": "Database connection strings embedded in code expose credentials."
+      "finding_types": ["cookie_pattern"],
+      "cwe_id": "CWE-614",
+      "cwe_name": "Sensitive Cookie in HTTPS Session Without 'Secure' Attribute",
+      "severity": "MEDIUM",
+      "description": "Cookies without secure flag can be transmitted over insecure channels.",
+      "attack_vectors": ["cookie_theft", "session_hijacking"]
+    },
+    {
+      "finding_types": ["browser_global"],
+      "cwe_id": "CWE-1004",
+      "cwe_name": "Sensitive Cookie Without 'HttpOnly' Flag",
+      "severity": "MEDIUM",
+      "description": "Global variables exposed in browser context can be accessed by malicious scripts.",
+      "attack_vectors": ["xss_exploitation", "client_side_injection"]
     }
   ]
 }
