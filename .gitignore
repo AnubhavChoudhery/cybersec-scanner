@@ -36,6 +36,16 @@ audit_report.json
 *.md
 !README.md
 
+# Configuration files (user-specific)
+cybersec-config.yaml
+config.yaml
+test-config.yaml
+*-config.yaml
+!cybersec-config.example.yaml
+
+# User downloads and local test data
+Downloads/
+
 # Database Files (generated, not source code)
 *.db
 *.sqlite

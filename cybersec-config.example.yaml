@@ -1,0 +1,59 @@
+# CyberSec Scanner Configuration File
+# Copy this to cybersec-config.yaml and customize for your project
+
+scanner:
+  # Git repository scanner
+  git:
+    enabled: true
+    root: "."  # Path to git repository
+    max_commits: 50  # Maximum commits to scan
+    ignore_patterns:
+      - "*.min.js"
+      - "*.map"
+      - "node_modules/"
+      - "venv/"
+      - ".venv/"
+      - "dist/"
+      - "build/"
+  
+  # Web application crawler
+  web:
+    enabled: false
+    target: "http://localhost:8000"  # Target URL
+    max_pages: 50  # Maximum pages to crawl
+    timeout: 10  # Request timeout in seconds
+    same_host_only: true  # Only crawl same host
+    workers: 4  # Number of concurrent workers
+  
+  # MITM (Man-in-the-Middle) network scanner
+  mitm:
+    enabled: false
+    traffic_file: "./mitm_traffic.ndjson"  # Path to captured traffic
+    port: 8080  # Proxy port
+    duration: 300  # Duration in seconds (0 = indefinite)
+    ignore_hosts_regex: "(google|facebook|cdn)\\.com"  # Hosts to ignore
+  
+  # Runtime browser scanner
+  runtime:
+    enabled: false
+    # Runtime scanning configuration
+
+# RAG (Retrieval Augmented Generation) settings
+rag:
+  enabled: true  # Build knowledge graph after scan
+  model: "gemma3:1b"  # Ollama model for LLM queries
+  mode: "graph"  # Retrieval mode: graph, vector, or hybrid
+  top_k: 5  # Number of findings to retrieve
+
+# Output paths
+output:
+  audit_report: "audit_report.json"  # Main audit report
+  graph_file: "rag/graph.gpickle"  # Knowledge graph storage
+  database: "security_audit.db"  # SQLite database
+  log_file: "scanner.log"  # Log file (optional)
+
+# Advanced settings
+advanced:
+  patterns_file: "patterns.env"  # Secret detection patterns
+  max_file_size: 10485760  # Max file size to scan (10MB)
+  max_js_size: 5242880  # Max JS file size for web scan (5MB)
