@@ -32,6 +32,26 @@ audit_report.json
 *_report.json
 *.log
 
+# Documentation (exclude all .md except README.md)
+*.md
+!README.md
+
+# Database Files (generated, not source code)
+*.db
+*.sqlite
+*.sqlite3
+*.gpickle
+*.pickle
+*.pkl
+*.index
+*.hnsw
+*.npz
+*.npy
+database/*.db
+database/*.sqlite
+rag/*.gpickle
+rag/*.index
+
 # CRITICAL: Sensitive Pattern Files - DO NOT COMMIT!
 patterns.env
 *.key

@@ -28,3 +28,34 @@ CREATE TABLE IF NOT EXISTS cwe_entries (
     severity TEXT,
     metadata JSON
 );
+
+CREATE TABLE IF NOT EXISTS finding_cwe_map (
+    finding_id TEXT,
+    cwe_id TEXT,
+    confidence REAL,
+    FOREIGN KEY (finding_id) REFERENCES findings(id),
+    FOREIGN KEY (cwe_id) REFERENCES cwe_entries(cwe_id)
+);
+
+CREATE TABLE IF NOT EXISTS owasp_categories (
+    owasp_id TEXT PRIMARY KEY,
+    name TEXT,
+    description TEXT,
+    year INTEGER,
+    rank INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS cwe_owasp_map (
+    cwe_id TEXT,
+    owasp_id TEXT,
+    FOREIGN KEY (cwe_id) REFERENCES cwe_entries(cwe_id),
+    FOREIGN KEY (owasp_id) REFERENCES owasp_categories(owasp_id)
+);
+
+CREATE TABLE IF NOT EXISTS mitigations (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    description TEXT,
+    code_example TEXT,
+    applicable_to TEXT
+);

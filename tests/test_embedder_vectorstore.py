@@ -9,9 +9,9 @@ def test_vectorstore_bruteforce_search():
     vs.add(3, np.array([0.9, 0.1, 0.0, 0.0], dtype=float))
 
     res = vs.search(np.array([1.0, 0.0, 0.0, 0.0], dtype=float), k=2)
-    # highest should be id 1, then id 3
-    assert res[0][0] == 1
-    assert res[1][0] == 3
+    # highest should be id 1, then id 3 (returned as strings)
+    assert res[0][0] == "1"
+    assert res[1][0] == "3"
 
 
 def test_vectorstore_save_load(tmp_path):
@@ -24,4 +24,5 @@ def test_vectorstore_save_load(tmp_path):
     vs2 = VectorStore(dim=3)
     vs2.load(p)
     res = vs2.search(np.array([1.0, 0.0, 0.0], dtype=float), k=1)
-    assert res[0][0] in (10, 11, 10)
+    # IDs are returned as strings after save/load
+    assert res[0][0] in ("10", "11")

@@ -4,7 +4,7 @@ Falls back to a simple in-memory numpy brute-force index when hnswlib is not ins
 so development and tests can run on Windows without C++ build tools.
 
 API:
- - add(item_id: int, vector: np.ndarray)
+ - add(item_id: str, vector: np.ndarray)
  - search(query_vector, k=10) -> list of (item_id, score)
  - save(path)
  - load(path)
@@ -12,7 +12,7 @@ API:
 from __future__ import annotations
 import os
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 import numpy as np
 
 try:
@@ -25,7 +25,8 @@ except Exception:
 class VectorStore:
     def __init__(self, dim: int = 384):
         self.dim = dim
-        self._ids: List[int] = []
+        self._ids: List[str] = []  # Store string IDs
+        self._id_to_idx: dict = {}  # Map string ID to integer index
         self._vecs: List[np.ndarray] = []
         self._index = None
         if _HAS_HNSW:
@@ -33,12 +34,16 @@ class VectorStore:
             self._index = hnswlib.Index(space='cosine', dim=self.dim)
             self._index_inited = False
 
-    def add(self, item_id: int, vector: np.ndarray):
+    def add(self, item_id: Union[str, int], vector: np.ndarray):
         vec = np.asarray(vector, dtype=np.float32)
         if vec.shape != (self.dim,):
             raise ValueError(f"Vector must have shape ({self.dim},), got {vec.shape}")
 
-        self._ids.append(int(item_id))
+        # Convert to string and track
+        item_id = str(item_id)
+        idx = len(self._ids)
+        self._ids.append(item_id)
+        self._id_to_idx[item_id] = idx
         self._vecs.append(vec)
 
         if _HAS_HNSW:
@@ -46,9 +51,9 @@ class VectorStore:
                 # initialize with a guess for max elements
                 self._index.init_index(max_elements=10000, ef_construction=200, M=16)
                 self._index_inited = True
-            self._index.add_items(vec.reshape(1, -1), [int(item_id)])
+            self._index.add_items(vec.reshape(1, -1), [idx])
 
-    def _search_bruteforce(self, qvec: np.ndarray, k: int = 10) -> List[Tuple[int, float]]:
+    def _search_bruteforce(self, qvec: np.ndarray, k: int = 10) -> List[Tuple[str, float]]:
         if not self._vecs:
             return []
         mats = np.vstack(self._vecs)  # Nxd
@@ -58,9 +63,9 @@ class VectorStore:
         norms = np.linalg.norm(mats, axis=1) * (np.linalg.norm(q) + 1e-12)
         sims = dot / norms
         idx = np.argsort(-sims)[:k]
-        return [(int(self._ids[i]), float(sims[i])) for i in idx]
+        return [(self._ids[i], float(sims[i])) for i in idx]
 
-    def search(self, query_vector: np.ndarray, k: int = 10) -> List[Tuple[int, float]]:
+    def search(self, query_vector: np.ndarray, k: int = 10) -> List[Tuple[str, float]]:
         q = np.asarray(query_vector, dtype=np.float32)
         if _HAS_HNSW and self._index_inited:
             labels, distances = self._index.knn_query(q.reshape(1, -1), k=k)
@@ -70,7 +75,8 @@ class VectorStore:
                 if lab == -1:
                     continue
                 score = 1.0 - float(dist)
-                results.append((int(lab), score))
+                # Map integer index back to string ID
+                results.append((self._ids[lab], score))
             return results
         else:
             return self._search_bruteforce(q, k=k)
@@ -78,9 +84,9 @@ class VectorStore:
     def save(self, path: str | Path):
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        # save vectors as .npz and ids as .npy
+        # save vectors as .npz and ids as .npy (strings saved as object dtype)
         np.savez_compressed(p.with_suffix('.npz'), vecs=np.vstack(self._vecs) if self._vecs else np.zeros((0, self.dim), dtype=np.float32))
-        np.save(p.with_suffix('.ids.npy'), np.array(self._ids, dtype=np.int64))
+        np.save(p.with_suffix('.ids.npy'), np.array(self._ids, dtype=object))
         # if hnsw present and index inited, save index too
         if _HAS_HNSW and self._index_inited:
             try:
@@ -92,9 +98,11 @@ class VectorStore:
         p = Path(path)
         arr = np.load(p.with_suffix('.npz'))
         vecs = arr['vecs']
-        ids = np.load(p.with_suffix('.ids.npy'))
+        ids = np.load(p.with_suffix('.ids.npy'), allow_pickle=True)
         self._vecs = [vecs[i].astype(np.float32) for i in range(len(ids))]
-        self._ids = [int(x) for x in ids.tolist()]
+        self._ids = [str(x) for x in ids.tolist()]
+        # Rebuild id_to_idx mapping
+        self._id_to_idx = {id_: i for i, id_ in enumerate(self._ids)}
         if _HAS_HNSW:
             try:
                 self._index.load_index(str(p.with_suffix('.hnsw')))
