@@ -1,0 +1,61 @@
+{
+  "comment": "Small starter mapping of scanner finding types to CWE IDs for graph enrichment",
+  "mappings": [
+    {
+      "finding_types": ["api_key_in_header", "api_key_in_url", "git_pattern", "AWS_ACCESS_KEY", "GITHUB_PAT", "OPENAI_API_KEY"],
+      "cwe_id": "CWE-798",
+      "cwe_name": "Use of Hard-coded Credentials",
+      "severity": "CRITICAL",
+      "description": "The software contains hard-coded credentials, such as a password or cryptographic key."
+    },
+    {
+      "finding_types": ["plaintext_password", "password_in_body"],
+      "cwe_id": "CWE-259",
+      "cwe_name": "Use of Hard-coded Password",
+      "severity": "CRITICAL",
+      "description": "The software contains a hard-coded password which compromises system security."
+    },
+    {
+      "finding_types": ["url_embedded_credentials", "basic_auth_header"],
+      "cwe_id": "CWE-523",
+      "cwe_name": "Unprotected Transport of Credentials",
+      "severity": "HIGH",
+      "description": "Login pages or authentication endpoints do not use adequate measures to protect credentials during transmission."
+    },
+    {
+      "finding_types": ["secret_in_response_body", "secret_in_response_header", "response_pattern"],
+      "cwe_id": "CWE-200",
+      "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
+      "severity": "HIGH",
+      "description": "The product exposes sensitive information to an actor that is not explicitly authorized to have access to that information."
+    },
+    {
+      "finding_types": ["browser_storage", "cookie_insecure"],
+      "cwe_id": "CWE-312",
+      "cwe_name": "Cleartext Storage of Sensitive Information",
+      "severity": "MEDIUM",
+      "description": "The application stores sensitive information in cleartext."
+    },
+    {
+      "finding_types": ["exposed_path", "js_pattern"],
+      "cwe_id": "CWE-540",
+      "cwe_name": "Inclusion of Sensitive Information in Source Code",
+      "severity": "MEDIUM",
+      "description": "Source code comments or configuration files may contain sensitive information such as passwords or API keys."
+    },
+    {
+      "finding_types": ["JWT_TOKEN", "BEARER_TOKEN"],
+      "cwe_id": "CWE-311",
+      "cwe_name": "Missing Encryption of Sensitive Data",
+      "severity": "HIGH",
+      "description": "The software does not encrypt sensitive or critical information before storage or transmission."
+    },
+    {
+      "finding_types": ["DB_CONNECTION_STRING", "MONGODB_URI", "POSTGRES_URI"],
+      "cwe_id": "CWE-798",
+      "cwe_name": "Use of Hard-coded Credentials",
+      "severity": "CRITICAL",
+      "description": "Database connection strings embedded in code expose credentials."
+    }
+  ]
+}
