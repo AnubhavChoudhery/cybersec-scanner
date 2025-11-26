@@ -9,7 +9,7 @@ import sys
 
 def test_scanners():
     """Test all scanner modules."""
-    print("\n🔍 Testing Scanners...")
+    print("\n[TEST] Testing Scanners...")
     
     # Test git scanner (it's a function, not a class)
     print("  ├─ Git Scanner...", end=" ")
@@ -17,9 +17,9 @@ def test_scanners():
         from scanners.git_scanner import scan_git_history
         # Just check it can be imported
         assert callable(scan_git_history)
-        print("✅")
+        print("[OK]")
     except Exception as e:
-        print(f"❌ {e}")
+        print(f"[FAIL] {e}")
         return False
     
     # Test web crawler (it's a class: LocalCrawler)
@@ -27,20 +27,20 @@ def test_scanners():
     try:
         from scanners.web_crawler import LocalCrawler, process_crawler_findings
         assert callable(process_crawler_findings)
-        print("✅")
+        print("[OK]")
     except Exception as e:
-        print(f"❌ {e}")
+        print(f"[FAIL] {e}")
         return False
     
     # Test browser scanner (optional - requires Playwright)
     print("  ├─ Browser Scanner...", end=" ")
     try:
         from scanners.browser_scanner import playwright_inspect, process_browser_findings
-        print("✅")
+        print("[OK]")
     except ImportError:
         print("⚠️  (Playwright not installed, skipping)")
     except Exception as e:
-        print(f"❌ {e}")
+        print(f"[FAIL] {e}")
     
     # Test network scanner (functions: run_mitm_dump, stop_mitm_dump)
     print("  └─ Network Scanner...", end=" ")
@@ -48,9 +48,9 @@ def test_scanners():
         from scanners.network_scanner import run_mitm_dump, stop_mitm_dump
         assert callable(run_mitm_dump)
         assert callable(stop_mitm_dump)
-        print("✅")
+        print("[OK]")
     except Exception as e:
-        print(f"❌ {e}")
+        print(f"[FAIL] {e}")
         return False
     
     return True
@@ -66,14 +66,14 @@ def test_knowledge_graph():
         # Check if audit_report.json exists
         audit_path = Path("audit_report.json")
         if not audit_path.exists():
-            print("  ❌ audit_report.json not found. Run scanners first!")
+            print("  [FAIL] audit_report.json not found. Run scanners first!")
             return False
         
         # Build graph
         print("  ├─ Building graph from audit_report.json...", end=" ")
         kg = KnowledgeGraph()
         kg.build_from_audit(audit_path)
-        print("✅")
+        print("[OK]")
         
         # Check stats
         stats = kg.stats()
@@ -85,12 +85,12 @@ def test_knowledge_graph():
         # Save graph
         graph_path = Path("rag/graph.gpickle")
         kg.save(graph_path)
-        print(f"  ✅ Graph saved to {graph_path}")
+        print(f"  [OK] Graph saved to {graph_path}")
         
         return True
         
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"  [FAIL] Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -109,7 +109,7 @@ def test_normalizer():
             graph_path="rag/graph.gpickle",
             db_path="database/security_findings.db"
         )
-        print("✅")
+        print("[OK]")
         
         print(f"  ├─ Findings: {stats['findings']}")
         print(f"  ├─ Endpoints: {stats['endpoints']}")
@@ -122,12 +122,12 @@ def test_normalizer():
         normalizer = DatabaseNormalizer("database/security_findings.db")
         critical = normalizer.query_findings(severity="CRITICAL")
         high = normalizer.query_findings(severity="HIGH")
-        print(f"✅ (CRITICAL: {len(critical)}, HIGH: {len(high)})")
+        print(f"[OK] (CRITICAL: {len(critical)}, HIGH: {len(high)})")
         
         return True
         
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"  [FAIL] Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -143,13 +143,13 @@ def test_embeddings():
         
         print("  ├─ Loading embedder...", end=" ")
         embedder = Embedder()
-        print("✅")
+        print("[OK]")
         
         print("  ├─ Testing embedding...", end=" ")
         vecs = embedder.embed_texts(["test query", "another test"])
         assert len(vecs) == 2
         assert len(vecs[0]) == embedder.dim
-        print(f"✅ (dim={embedder.dim})")
+        print(f"[OK] (dim={embedder.dim})")
         
         print("  ├─ Testing vector store...", end=" ")
         vs = VectorStore(dim=embedder.dim)
@@ -157,7 +157,7 @@ def test_embeddings():
         vs.add("test2", vecs[1])
         results = vs.search(vecs[0], k=1)
         assert results[0][0] == "test1"
-        print("✅")
+        print("[OK]")
         
         return True
         
@@ -165,7 +165,7 @@ def test_embeddings():
         print(f"  ⚠️  Embeddings not available (optional): {e}")
         return True  # Not critical
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"  [FAIL] Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -173,21 +173,21 @@ def test_embeddings():
 
 def test_retriever():
     """Test RAG retriever."""
-    print("\n🔍 Testing RAG Retriever...")
+    print("\n[TEST] Testing RAG Retriever...")
     
     try:
         from rag.retriever import Retriever
         
         graph_path = Path("rag/graph.gpickle")
         if not graph_path.exists():
-            print("  ❌ Graph not found. Run test_knowledge_graph first!")
+            print("  [FAIL] Graph not found. Run test_knowledge_graph first!")
             return False
         
         # Test graph-only retrieval
         print("  ├─ Testing graph retrieval...", end=" ")
         retriever = Retriever(graph_path=graph_path)
         results = retriever.retrieve("API key", k=5, mode="graph")
-        print(f"✅ (found {len(results)} results)")
+        print(f"[OK] (found {len(results)} results)")
         
         # Test with embeddings (if available)
         try:
@@ -215,11 +215,11 @@ def test_retriever():
                 vector_store=vector_store
             )
             results_v = retriever_v.retrieve("credentials exposed", k=5, mode="vector")
-            print(f"✅ (found {len(results_v)} results)")
+            print(f"[OK] (found {len(results_v)} results)")
             
             print("  ├─ Testing hybrid retrieval...", end=" ")
             results_h = retriever_v.retrieve("password leak", k=5, mode="hybrid")
-            print(f"✅ (found {len(results_h)} results)")
+            print(f"[OK] (found {len(results_h)} results)")
             
         except ImportError:
             print("  ⚠️  Vector/hybrid retrieval skipped (embeddings not installed)")
@@ -227,7 +227,7 @@ def test_retriever():
         return True
         
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"  [FAIL] Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -256,7 +256,7 @@ def test_llm_client():
         )
         
         if response and response.get("text"):
-            print("✅")
+            print("[OK]")
             return True
         else:
             print("⚠️  Ollama responded but empty")
@@ -275,7 +275,7 @@ def test_cli():
         print("  ├─ Importing CLI...", end=" ")
         from rag.cli import query_graph_and_llm
         assert callable(query_graph_and_llm)
-        print("✅")
+        print("[OK]")
         
         print("  └─ CLI available. Test manually with:")
         print("     python -m rag.cli --query 'show me API keys' --model gemma3:1b")
@@ -283,7 +283,7 @@ def test_cli():
         return True
         
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"  [FAIL] Error: {e}")
         return False
 
 
@@ -308,7 +308,7 @@ def main():
     print("="*60)
     
     for name, passed in results.items():
-        status = "✅" if passed else "❌"
+        status = "[OK]" if passed else "[FAIL]"
         print(f"{status} {name}")
     
     all_passed = all(results.values())

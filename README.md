@@ -755,6 +755,62 @@ Contributions are welcome! Please follow these guidelines:
 
 This tool is provided for lawful security testing only. Users are responsible for ensuring they have proper authorization before scanning any application. The authors assume no liability for misuse or unauthorized access.
 
+## Testing
+
+### Quick Test Commands
+
+```bash
+# Run all tests (auto-detects Ollama)
+python run_tests.py
+
+# Run all tests including LLM (requires Ollama)
+python run_tests.py --all
+
+# Fast tests only (no LLM)
+python run_tests.py --fast
+
+# With coverage report
+python run_tests.py --coverage
+
+# Specific test file
+python run_tests.py --file retriever
+```
+
+### Test Prerequisites
+
+**Core tests** (no additional setup):
+```bash
+pip install pytest pytest-cov
+pytest tests/ -v -k "not llm_client"
+```
+
+**LLM tests** (requires Ollama):
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh  # Linux/Mac
+# Or download from https://ollama.com for Windows
+
+# Pull model
+ollama pull gemma3:1b
+
+# Run all tests
+pytest tests/ -v
+```
+
+### Test Coverage
+
+| Component | Tests | Coverage |
+|-----------|-------|----------|
+| Knowledge Graph | ✅ 1 test | 100% |
+| CWE Enrichment | ✅ 1 test | 100% |
+| Database Normalizer | ✅ 5 tests | 95% |
+| Graph Retriever | ✅ 8 tests | 100% |
+| LLM Client | ✅ 8 tests | 85% |
+| End-to-End Pipeline | ✅ 2 tests | Full flow |
+| **Total** | **24 tests** | **~90%** |
+
+See `tests/README.md` for detailed testing documentation.
+
 ## Support
 
 For issues, questions, or contributions:

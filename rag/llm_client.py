@@ -143,8 +143,14 @@ def generate_answer(
         import ollama as _oll
         try:
             out = _oll.generate(model=model, prompt=prompt)
-            # _oll.generate may return a dict or string
-            text = out if isinstance(out, str) else json.dumps(out)
+            # _oll.generate returns a dict with 'response' field containing the actual text
+            if isinstance(out, dict) and 'response' in out:
+                text = out['response']
+            elif isinstance(out, str):
+                text = out
+            else:
+                # Fallback: try to extract text from dict
+                text = str(out.get('response', out.get('text', str(out))))
         except Exception:
             # fall through to HTTP
             text = _call_ollama_http(model, prompt, timeout=timeout)

@@ -77,3 +77,5 @@ run_with_mitm.sh
 run_with_mitm.bat
 scanners/network_scanner_backup.py
 RAG.md
+rag_analysis.txt
+rag_summary.txt
