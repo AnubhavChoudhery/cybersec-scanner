@@ -213,13 +213,50 @@ class KnowledgeGraph:
                 break  # Use first matching CWE
 
     def build_from_audit(self, audit_path: Path) -> None:
-        """Build graph from audit report JSON file."""
+        """
+        Build graph from audit report JSON file.
+        
+        Args:
+            audit_path: Path to audit_report.json
+            
+        Raises:
+            FileNotFoundError: If audit file doesn't exist
+            GraphError: If audit file is invalid or empty
+        """
+        # Validate file exists
         if not audit_path.exists():
-            raise FileNotFoundError(f"Audit file not found: {audit_path}")
-        with audit_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-
+            raise FileNotFoundError(
+                f"Audit file not found: {audit_path}\n"
+                f"Hint: Run scanners first to generate audit_report.json"
+            )
+        
+        # Validate file is not empty
+        if audit_path.stat().st_size == 0:
+            from exceptions import GraphError
+            raise GraphError(f"Audit file is empty: {audit_path}")
+        
+        # Load and validate JSON
+        try:
+            with audit_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            from exceptions import GraphError
+            raise GraphError(f"Invalid JSON in audit file: {e}")
+        
+        # Validate findings exist
+        if "findings" not in data:
+            from exceptions import GraphError
+            raise GraphError(
+                f"Audit file missing 'findings' key. Expected format: {{'findings': [...]}}"
+            )
+        
         findings = data.get("findings", [])
+        
+        # Warn if no findings
+        if len(findings) == 0:
+            import warnings
+            warnings.warn("Audit file contains no findings. Graph will be empty.")
+        
         # Normalize findings to minimal schema
         for f in findings:
             normalized = {
@@ -250,18 +287,46 @@ class KnowledgeGraph:
             return path
 
     def load(self, path: Optional[Path] = None) -> nx.DiGraph:
-        """Load graph from pickle file."""
+        """
+        Load graph from pickle file.
+        
+        Args:
+            path: Path to graph pickle file
+            
+        Returns:
+            Loaded NetworkX DiGraph
+            
+        Raises:
+            FileNotFoundError: If graph file doesn't exist
+            GraphError: If graph file is corrupted
+        """
         path = path or GRAPH_PATH
         if not Path(path).exists():
-            raise FileNotFoundError(path)
+            raise FileNotFoundError(
+                f"Graph file not found: {path}\n"
+                f"Hint: Build graph first with KnowledgeGraph().build_from_audit()"
+            )
+        
         try:
             self.g = nx.read_gpickle(path)
+            # Validate it's a valid graph
+            if not isinstance(self.g, nx.DiGraph):
+                from exceptions import GraphError
+                raise GraphError(f"Loaded object is not a NetworkX DiGraph: {type(self.g)}")
             return self.g
-        except Exception:
-            import pickle
-            with open(path, "rb") as fh:
-                self.g = pickle.load(fh)
-            return self.g
+        except Exception as e:
+            # Try fallback with plain pickle
+            try:
+                import pickle
+                with open(path, "rb") as fh:
+                    self.g = pickle.load(fh)
+                if not isinstance(self.g, nx.DiGraph):
+                    from exceptions import GraphError
+                    raise GraphError(f"Loaded object is not a NetworkX DiGraph: {type(self.g)}")
+                return self.g
+            except Exception:
+                from exceptions import GraphError
+                raise GraphError(f"Failed to load graph from {path}: {e}")
 
     def stats(self) -> Dict[str, int]:
         """Get statistics about the graph."""

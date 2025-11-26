@@ -24,10 +24,22 @@ class Retriever:
         
         Args:
             graph_path: Path to saved knowledge graph
+            
+        Raises:
+            RetrieverError: If graph is not loaded or invalid
         """
         self.kg = KnowledgeGraph()
         if graph_path:
-            self.kg.load(graph_path)
+            try:
+                self.kg.load(graph_path)
+            except Exception as e:
+                from exceptions import RetrieverError
+                raise RetrieverError(f"Failed to load graph for retrieval: {e}")
+        
+        # Validate graph has findings
+        if self.kg.g.number_of_nodes() == 0:
+            import warnings
+            warnings.warn("Graph is empty. Retrieval will return no results.")
 
     def retrieve(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
@@ -39,7 +51,20 @@ class Retriever:
             
         Returns:
             List of finding dicts with id, summary, severity, snippet, url
+            
+        Raises:
+            ValidationError: If query is empty or k is invalid
         """
+        # Validate query
+        if not query or not query.strip():
+            from exceptions import ValidationError
+            raise ValidationError("Query cannot be empty")
+        
+        # Validate k
+        if k <= 0:
+            from exceptions import ValidationError
+            raise ValidationError(f"k must be positive, got {k}")
+        
         toks = _tokenize(query)
         matches = []
         for node, data in self.kg.g.nodes(data=True):

@@ -99,7 +99,23 @@ class DatabaseNormalizer:
             
         Returns:
             Stats dict with counts of inserted records
+            
+        Raises:
+            DatabaseError: If graph_obj is invalid or missing required attributes
         """
+        # Validate input
+        if graph_obj is None:
+            from exceptions import DatabaseError
+            raise DatabaseError("graph_obj cannot be None")
+        
+        if not hasattr(graph_obj, 'g'):
+            from exceptions import DatabaseError
+            raise DatabaseError("graph_obj must have a 'g' attribute (NetworkX graph)")
+        
+        if graph_obj.g.number_of_nodes() == 0:
+            from exceptions import DatabaseError
+            raise DatabaseError("Graph is empty. Build graph from audit report first.")
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -219,7 +235,25 @@ class DatabaseNormalizer:
             
         Returns:
             List of finding dicts
+            
+        Raises:
+            ValidationError: If severity is not a valid value
         """
+        # Validate severity
+        if severity is not None:
+            valid_severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO", "UNKNOWN"]
+            if severity.upper() not in valid_severities:
+                from exceptions import ValidationError
+                raise ValidationError(
+                    f"Invalid severity '{severity}'. Must be one of: {', '.join(valid_severities)}"
+                )
+            severity = severity.upper()
+        
+        # Validate limit
+        if limit <= 0:
+            from exceptions import ValidationError
+            raise ValidationError(f"Limit must be positive, got {limit}")
+        
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Enable column access by name
         cursor = conn.cursor()
