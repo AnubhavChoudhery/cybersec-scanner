@@ -1,0 +1,24 @@
+# Core dependencies for cybersec-scanner
+networkx>=3.1
+PyYAML>=6.0
+requests>=2.32.0
+
+# Optional: For LLM integration
+ollama>=0.1.7
+
+# Optional: For MITM scanning
+mitmproxy>=11.0.0
+
+# Optional: For browser automation
+playwright>=1.55.0
+
+# Optional: For web scanning
+Flask>=3.1.0
+
+# Security and crypto
+cryptography>=44.0.0
+pyOpenSSL>=24.3.0
+
+# Optional: Vector embeddings (install with: pip install cybersec-scanner[vector])
+# sentence-transformers>=2.0.0
+# hnswlib>=0.7.0

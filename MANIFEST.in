@@ -1,0 +1,29 @@
+# Include non-Python files in the package distribution
+include README.md
+include LICENSE
+include requirements.txt
+include cybersec-config.example.yaml
+include patterns.env.example
+
+# Include SQL schema
+recursive-include cybersec_scanner/database *.sql
+
+# Include knowledge base data
+recursive-include cybersec_scanner/knowledge_base *.json
+
+# Exclude unnecessary files
+exclude .gitignore
+exclude .coverage
+exclude pytest.ini
+exclude conftest.py
+recursive-exclude tests *
+recursive-exclude examples *
+recursive-exclude docs *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+prune .git
+prune venv
+prune .venv
+prune htmlcov
+prune .pytest_cache
