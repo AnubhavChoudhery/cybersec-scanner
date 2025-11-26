@@ -24,6 +24,10 @@ jobs:
         pip install build twine
         pip install -e .
     
+    - name: Create patterns.env for build
+      run: |
+        echo "AWS_ACCESS_KEY_ID=AKIA[0-9A-Z]{16}" > patterns.env
+    
     - name: Build package
       run: python -m build
     
@@ -36,7 +40,7 @@ jobs:
         cybersec-scanner --version
     
     - name: Store build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist-packages
         path: dist/
