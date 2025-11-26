@@ -12,11 +12,11 @@ def test_normalizer():
     try:
         from database.normalizer import normalize_graph_to_db
         stats = normalize_graph_to_db('rag/graph.gpickle')
-        print(f"✅ Normalizer works!")
+        print(f"[OK] Normalizer works!")
         print(f"   Stats: {stats}")
         return True
     except Exception as e:
-        print(f"❌ Normalizer failed: {e}")
+        print(f"[FAIL] Normalizer failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -34,7 +34,7 @@ def test_query_db():
         
         # Get stats
         stats = normalizer.get_stats()
-        print(f"✅ Database query works!")
+        print(f"[OK] Database query works!")
         print(f"   Database stats: {stats}")
         
         # Query critical findings
@@ -46,7 +46,7 @@ def test_query_db():
         
         return True
     except Exception as e:
-        print(f"❌ Database query failed: {e}")
+        print(f"[FAIL] Database query failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -65,14 +65,14 @@ def test_retriever():
         retriever = Retriever(graph_path=Path("rag/graph.gpickle"))
         results = retriever.retrieve("API key", k=3, mode="graph")
         
-        print(f"✅ Retriever works!")
+        print(f"[OK] Retriever works!")
         print(f"   Found {len(results)} results for 'API key'")
         for r in results[:3]:
             print(f"     - {r.get('summary', 'N/A')} [{r.get('severity', 'N/A')}]")
         
         return True
     except Exception as e:
-        print(f"❌ Retriever failed: {e}")
+        print(f"[FAIL] Retriever failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -94,13 +94,13 @@ def test_cli():
             model="gemma3:1b"
         )
         
-        print(f"✅ CLI works!")
+        print(f"[OK] CLI works!")
         print(f"   Retrieved {len(result.get('contexts', []))} contexts")
         print(f"   LLM response length: {len(result.get('answer', ''))} chars")
         
         return True
     except Exception as e:
-        print(f"❌ CLI failed (this is OK if Ollama not running): {e}")
+        print(f"[FAIL] CLI failed (this is OK if Ollama not running): {e}")
         return False
 
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     print("=" * 60)
     
     for name, passed in results:
-        status = "✅ PASS" if passed else "❌ FAIL"
+        status = "[PASS]" if passed else "[FAIL]"
         print(f"{status} - {name}")
     
     passed_count = sum(1 for _, p in results if p)
@@ -129,6 +129,6 @@ if __name__ == "__main__":
     if passed_count == total:
         print("\n🎉 All tests passed!")
     elif passed_count >= total - 1:  # Allow CLI to fail if Ollama not running
-        print("\n✅ Core components working!")
+        print("\n[OK] Core components working!")
     else:
         print("\n⚠️ Some tests failed - check errors above")

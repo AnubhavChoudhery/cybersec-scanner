@@ -19,10 +19,10 @@ def test_imports():
             scan,
             query,
         )
-        print(f"✅ All imports successful (v{__version__})")
+        print(f"[OK] All imports successful (v{__version__})")
         return True
     except ImportError as e:
-        print(f"❌ Import failed: {e}")
+        print(f"[FAIL] Import failed: {e}")
         return False
 
 
@@ -43,10 +43,10 @@ def test_exception_hierarchy():
         assert issubclass(GraphError, CyberSecScannerError)
         assert issubclass(ValidationError, CyberSecScannerError)
         
-        print("✅ Exception hierarchy correct")
+        print("[OK] Exception hierarchy correct")
         return True
     except Exception as e:
-        print(f"❌ Exception test failed: {e}")
+        print(f"[FAIL] Exception test failed: {e}")
         return False
 
 
@@ -61,10 +61,10 @@ def test_convenience_functions():
         assert callable(scan)
         assert callable(query)
         
-        print("✅ Convenience functions available")
+        print("[OK] Convenience functions available")
         return True
     except Exception as e:
-        print(f"❌ Convenience function test failed: {e}")
+        print(f"[FAIL] Convenience function test failed: {e}")
         return False
 
 
