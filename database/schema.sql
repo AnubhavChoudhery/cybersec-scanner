@@ -59,3 +59,19 @@ CREATE TABLE IF NOT EXISTS mitigations (
     code_example TEXT,
     applicable_to TEXT
 );
+
+-- Performance indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
+CREATE INDEX IF NOT EXISTS idx_findings_timestamp ON findings(timestamp);
+CREATE INDEX IF NOT EXISTS idx_findings_source ON findings(source);
+CREATE INDEX IF NOT EXISTS idx_findings_type ON findings(type);
+
+CREATE INDEX IF NOT EXISTS idx_finding_cwe_map_finding ON finding_cwe_map(finding_id);
+CREATE INDEX IF NOT EXISTS idx_finding_cwe_map_cwe ON finding_cwe_map(cwe_id);
+CREATE INDEX IF NOT EXISTS idx_finding_cwe_map_confidence ON finding_cwe_map(confidence);
+
+CREATE INDEX IF NOT EXISTS idx_endpoints_url ON endpoints(url);
+CREATE INDEX IF NOT EXISTS idx_endpoints_method ON endpoints(method);
+
+CREATE INDEX IF NOT EXISTS idx_cwe_owasp_map_cwe ON cwe_owasp_map(cwe_id);
+CREATE INDEX IF NOT EXISTS idx_cwe_owasp_map_owasp ON cwe_owasp_map(owasp_id);
