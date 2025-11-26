@@ -122,7 +122,10 @@ def scan(
             git_findings = scan_git_history(git_repo, **kwargs)
             findings.extend(git_findings)
         except Exception as e:
-            raise ScannerError(f"Git scan failed: {e}")
+            raise ScannerError(
+                f"Git scan failed: {e}\n"
+                f"Ensure '{git_repo}' is a valid git repository."
+            )
     
     # Web scan
     if url:
@@ -134,7 +137,10 @@ def scan(
             web_findings = process_crawler_findings(crawler.findings if hasattr(crawler, 'findings') else [])
             findings.extend(web_findings)
         except Exception as e:
-            raise ScannerError(f"Web scan failed: {e}")
+            raise ScannerError(
+                f"Web scan failed: {e}\n"
+                f"Ensure '{url}' is accessible and the server is running."
+            )
     
     # Create report
     report = {"findings": findings}
@@ -193,7 +199,10 @@ def query(
     if not graph_path.exists():
         audit_path = Path(audit_report)
         if not audit_path.exists():
-            raise ValidationError(f"Audit report not found: {audit_report}")
+            raise ValidationError(
+                f"Audit report not found: {audit_report}\n"
+                f"Run scan() first to generate the audit report."
+            )
         
         kg = KnowledgeGraph()
         kg.build_from_audit(audit_path)

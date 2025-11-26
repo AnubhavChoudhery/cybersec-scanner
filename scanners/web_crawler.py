@@ -98,7 +98,10 @@ class LocalCrawler:
         self.parsed_base = urllib.parse.urlparse(self.base)
         
         if requests is None:
-            raise ImportError("requests library is required for web crawling")
+            raise ImportError(
+                "requests library is required for web crawling\n"
+                "Install with: pip install requests"
+            )
         
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "LocalSecurityAudit/1.0"})

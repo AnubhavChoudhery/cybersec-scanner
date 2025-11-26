@@ -158,7 +158,11 @@ def run_mitm_dump(port: int = 8082, duration: Optional[int] = None, ignore_hosts
     """
     mitmdump = _find_mitmdump_exe()
     if not mitmdump:
-        raise FileNotFoundError("mitmdump not found. Install mitmproxy (pip install mitmproxy)")
+        raise FileNotFoundError(
+            "mitmdump not found. Install mitmproxy first.\n"
+            "Install with: pip install mitmproxy\n"
+            "Or visit: https://mitmproxy.org/"
+        )
 
     results_file = os.path.join(tempfile.gettempdir(), f"mitm_results_{port}.json")
     addon_file = _render_addon_file(results_file, ignore_hosts_regex)
@@ -184,7 +188,11 @@ def run_mitm_dump(port: int = 8082, duration: Optional[int] = None, ignore_hosts
     if proc.poll() is not None:
         # died early; collect output
         out, _ = proc.communicate(timeout=1)
-        raise RuntimeError(f"mitmdump exited: {out}")
+        raise RuntimeError(
+            f"mitmdump failed to start.\n"
+            f"Error: {out}\n"
+            f"Check if port {port} is available or mitmproxy is properly installed."
+        )
 
     # if duration set, we spawn a background timer to stop after duration
     if duration and duration > 0:

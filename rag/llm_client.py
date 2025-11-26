@@ -110,7 +110,11 @@ def _call_ollama_http(model: str, prompt: str, timeout: int = 60) -> str:
             return json.dumps(data)
         return str(data)
     except Exception as e:
-        raise OllamaError(f"HTTP Ollama call failed: {e}")
+        raise OllamaError(
+            f"HTTP Ollama call failed: {e}\n"
+            f"Ensure Ollama is running: ollama serve\n"
+            f"And the model '{model}' is installed: ollama pull {model}"
+        )
 
 
 def _call_ollama_cli(model: str, prompt: str, timeout: int = 60) -> str:
@@ -118,10 +122,17 @@ def _call_ollama_cli(model: str, prompt: str, timeout: int = 60) -> str:
     try:
         proc = subprocess.run(["ollama", "generate", model, prompt], capture_output=True, text=True, timeout=timeout)
         if proc.returncode != 0:
-            raise OllamaError(f"ollama CLI failed: {proc.stderr.strip()}")
+            raise OllamaError(
+                f"ollama CLI failed: {proc.stderr.strip()}\n"
+                f"Ensure model '{model}' is installed: ollama pull {model}"
+            )
         return proc.stdout
     except FileNotFoundError:
-        raise OllamaError("ollama CLI not found in PATH")
+        raise OllamaError(
+            "ollama CLI not found in PATH\n"
+            "Install Ollama from: https://ollama.ai/\n"
+            "Or ensure it's in your system PATH"
+        )
     except Exception as e:
         raise OllamaError(f"ollama CLI error: {e}")
 
