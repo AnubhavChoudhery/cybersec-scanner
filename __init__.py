@@ -9,6 +9,9 @@ This library provides:
 - Vector search for semantic finding retrieval
 """
 
+from typing import Dict, List, Any, Optional
+from pathlib import Path
+
 __version__ = "0.1.0"
 __author__ = "CyberSec Team"
 __license__ = "MIT"
@@ -77,11 +80,11 @@ __all__ = [
 
 # Convenience function for quick scanning
 def scan(
-    git_repo: str = None,
-    url: str = None,
+    git_repo: Optional[str] = None,
+    url: Optional[str] = None,
     output_path: str = "audit_report.json",
     **kwargs
-):
+) -> Dict[str, List[Dict[str, Any]]]:
     """
     Quick scan function for common use cases.
     
@@ -141,7 +144,7 @@ def query(
     model: str = "gemma3:1b",
     mode: str = "graph",
     k: int = 5
-):
+) -> str:
     """
     Query findings using RAG system.
     
@@ -151,7 +154,7 @@ def query(
         model: LLM model to use
         mode: Retrieval mode ('graph', 'vector', 'hybrid')
         k: Number of findings to retrieve
-    
+        
     Returns:
         str: LLM-generated answer with citations
     
@@ -160,6 +163,7 @@ def query(
         >>> answer = query("Show me all API key leaks")
         >>> print(answer)
     """
+    from pathlib import Path
     from pathlib import Path
     
     # Build knowledge graph if needed

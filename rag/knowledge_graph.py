@@ -35,7 +35,7 @@ class KnowledgeGraph:
         self._cwe_to_owasp: Dict[str, List[str]] = {}
         self._load_knowledge_base()
 
-    def _load_knowledge_base(self):
+    def _load_knowledge_base(self) -> None:
         """Load CWE mappings and OWASP categories from JSON files."""
         # Load CWE mappings
         if CWE_MAP_PATH.exists():
@@ -63,7 +63,7 @@ class KnowledgeGraph:
                 # Add Mitigation nodes to graph
                 self._initialize_mitigation_nodes()
 
-    def _initialize_owasp_nodes(self):
+    def _initialize_owasp_nodes(self) -> None:
         """Create OWASP category nodes in the graph."""
         for owasp in self._owasp_categories:
             owasp_id = owasp["owasp_id"]
@@ -78,7 +78,7 @@ class KnowledgeGraph:
                 rank=owasp["rank"]
             )
 
-    def _initialize_mitigation_nodes(self):
+    def _initialize_mitigation_nodes(self) -> None:
         """Create Mitigation nodes in the graph."""
         for mit in self._mitigations:
             mit_id = mit["id"]
@@ -116,7 +116,7 @@ class KnowledgeGraph:
         key = (method or "") + "|" + url
         return hashlib.sha1(key.encode("utf-8")).hexdigest()
 
-    def add_finding(self, finding: Dict[str, Any]):
+    def add_finding(self, finding: Dict[str, Any]) -> None:
         """Add a finding node and create relationships to CWE, OWASP, Attack Vectors."""
         fid = finding.get("id") or self._make_finding_id(finding)
         attrs = {
@@ -212,7 +212,7 @@ class KnowledgeGraph:
                 
                 break  # Use first matching CWE
 
-    def build_from_audit(self, audit_path: Path):
+    def build_from_audit(self, audit_path: Path) -> None:
         """Build graph from audit report JSON file."""
         if not audit_path.exists():
             raise FileNotFoundError(f"Audit file not found: {audit_path}")
@@ -237,7 +237,7 @@ class KnowledgeGraph:
             }
             self.add_finding(normalized)
 
-    def save(self, path: Optional[Path] = None):
+    def save(self, path: Optional[Path] = None) -> Path:
         """Save graph to pickle file."""
         path = path or GRAPH_PATH
         try:
@@ -249,7 +249,7 @@ class KnowledgeGraph:
                 pickle.dump(self.g, fh)
             return path
 
-    def load(self, path: Optional[Path] = None):
+    def load(self, path: Optional[Path] = None) -> nx.DiGraph:
         """Load graph from pickle file."""
         path = path or GRAPH_PATH
         if not Path(path).exists():
