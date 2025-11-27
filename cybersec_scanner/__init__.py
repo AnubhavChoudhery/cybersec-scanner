@@ -314,7 +314,7 @@ def scan_all(config_file: str = None, **kwargs):
             from .scanners import parse_mitm_traffic
             import time
             
-            traffic_path = Path(traffic_file)
+            traffic_path = Path(traffic_file).resolve()  # Convert to absolute path
             
             # Clear traffic file for fresh run
             try:

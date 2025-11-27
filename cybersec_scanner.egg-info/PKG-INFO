@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: cybersec-scanner
-Version: 1.0.1
+Version: 1.0.2
 Summary: A comprehensive security scanner and RAG-based vulnerability analyzer
 Home-page: https://github.com/AnubhavChoudhery/cybersec-scanner
 Author: CyberSec Team
@@ -199,21 +199,26 @@ The scanner provides interactive MITM inspection that captures real HTTP/HTTPS t
 ```python
 # backend/app/main.py - MUST BE FIRST IMPORT
 from cybersec_scanner.scanners.inject_mitm_proxy import inject_mitm_proxy_advanced
+from pathlib import Path
 
-# Specify where to save traffic (must match --mitm-traffic path)
-inject_mitm_proxy_advanced(traffic_file="mitm_traffic.ndjson")
+# Use ABSOLUTE path to ensure scanner and backend write to same file
+traffic_file = Path(__file__).parent.parent / "mitm_traffic.ndjson"
+inject_mitm_proxy_advanced(traffic_file=str(traffic_file.resolve()))
 
 # Now import your framework
 from fastapi import FastAPI
 # ... rest of your code
 ```
 
+**Important:** Use absolute paths! If your backend is in `backend/app/main.py`, the traffic file will be at `backend/mitm_traffic.ndjson`.
+
 **2. Run the scanner with MITM enabled:**
 
 ```bash
+# Use the SAME absolute path as in your backend
 cybersec-scanner scan \
   --mitm \
-  --mitm-traffic mitm_traffic.ndjson \
+  --mitm-traffic /absolute/path/to/backend/mitm_traffic.ndjson \
   --output audit_report.json
 ```
 
