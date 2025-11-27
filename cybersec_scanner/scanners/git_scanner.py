@@ -6,7 +6,7 @@ Uses efficient pickaxe search with pattern matching to find committed secrets.
 import os
 import subprocess
 import re
-from ..config import KNOWN_PATTERNS
+from cybersec_scanner.config import KNOWN_PATTERNS
 
 
 def scan_git_history(root, max_commits=100):
@@ -181,7 +181,9 @@ def scan_git_history(root, max_commits=100):
                                         "path": file_path,
                                         "pattern": name,
                                         "snippet": "[REDACTED]",
-                                        "original_length": len(snippet)
+                                        "original_length": len(snippet),
+                                        "severity": "HIGH",
+                                        "description": f"{name} found in git history at {file_path} (commit {commit[:12]})"
                                     }
                                     # Check if this exact finding already exists
                                     if not any(

@@ -7,10 +7,10 @@ from .retriever import Retriever
 from .llm_client import generate_answer
 
 
-def query_graph_and_llm(query: str, graph_path: str | None = None, model: str = "gemma3:1b"):
+def query_graph_and_llm(query: str, graph_path: str | None = None, model: str = "gemma3:1b", k: int = 6):
     graph_file = Path(graph_path) if graph_path else (Path(__file__).parent / "graph.gpickle")
     r = Retriever(graph_file if graph_file.exists() else None)
-    contexts = r.retrieve(query, k=6)
+    contexts = r.retrieve(query, k=k)
     result = generate_answer(query, contexts, model=model)
     return result
 

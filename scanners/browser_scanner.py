@@ -129,7 +129,8 @@ def process_browser_findings(browser_data):
                 "location": "localStorage",
                 "key": k,
                 "value": "[REDACTED]",
-                "original_length": len(str(v))
+                "original_length": len(str(v)),
+                "severity": "MEDIUM"
             })
     
     # sessionStorage
@@ -140,7 +141,8 @@ def process_browser_findings(browser_data):
                 "location": "sessionStorage",
                 "key": k,
                 "value": "[REDACTED]",
-                "original_length": len(str(v))
+                "original_length": len(str(v)),
+                "severity": "MEDIUM"
             })
     
     # insecure cookies
@@ -150,7 +152,8 @@ def process_browser_findings(browser_data):
                 "type": "cookie_insecure",
                 "name": c["name"],
                 "secure": c.get("secure"),
-                "httpOnly": c.get("httpOnly")
+                "httpOnly": c.get("httpOnly"),
+                "severity": "LOW"
             })
     
     # exposed globals
@@ -160,7 +163,8 @@ def process_browser_findings(browser_data):
                 "type": "browser_global",
                 "key": k,
                 "value": "[REDACTED]",
-                "original_length": len(str(v))
+                "original_length": len(str(v)),
+                "severity": "MEDIUM"
             })
     
     return findings
