@@ -94,6 +94,42 @@ pip install cybersec-scanner[dev]
 
 ## Quick Start
 
+### Prerequisites for RAG Queries
+
+To use the `query` command with LLM-powered analysis, you need Ollama:
+
+```bash
+# Install Ollama (https://ollama.com)
+# Linux/Mac:
+curl -fsSL https://ollama.com/install.sh | sh
+# Windows: Download from https://ollama.com
+
+# Pull the default model
+ollama pull gemma3:1b
+
+# Start Ollama (keep running in background)
+ollama serve
+```
+
+### Complete Scan-to-Query Workflow
+
+```bash
+# 1. Install the scanner
+pip install cybersec-scanner
+
+# 2. Download patterns file (required for detection)
+curl -o patterns.env https://raw.githubusercontent.com/AnubhavChoudhery/cybersec-scanner/main/patterns.env
+
+# 3. Scan your project (Git history)
+cybersec-scanner scan --git --root . --output audit_report.json --enable-rag
+
+# 4. Query the findings
+cybersec-scanner query "What secrets were found?" --audit audit_report.json
+
+# 5. Save response to file
+cybersec-scanner query "Summarize critical findings" --output summary.txt
+```
+
 ### CLI Usage
 
 ```bash
