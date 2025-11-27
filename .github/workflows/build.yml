@@ -28,6 +28,10 @@ jobs:
       run: |
         echo "AWS_ACCESS_KEY_ID=AKIA[0-9A-Z]{16}" > patterns.env
     
+    - name: Clean previous builds
+      run: |
+        rm -rf dist/ build/ *.egg-info
+    
     - name: Build package
       run: python -m build
     
