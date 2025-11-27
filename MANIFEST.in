@@ -5,6 +5,9 @@ include requirements.txt
 include cybersec-config.example.yaml
 include patterns.env.example
 
+# Include patterns file in package
+include cybersec_scanner/patterns.env
+
 # Include SQL schema
 recursive-include cybersec_scanner/database *.sql
 

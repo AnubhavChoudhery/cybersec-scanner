@@ -3,6 +3,7 @@ LIBRARY_TODO.md
 LICENSE
 MANIFEST.in
 README.md
+README.md.backup
 __init__.py
 config.py
 cybersec-config.example.yaml
@@ -17,7 +18,11 @@ requirements-full.txt
 requirements.txt
 run_tests.py
 setup.py
+test-config-output.yaml
+test-install.yaml
+test-scan-output.json
 test_help.sh
+test_release.ps1
 utils.py
 .github/workflows/build.yml
 .github/workflows/lint.yml
@@ -28,6 +33,7 @@ cybersec_scanner/__main__.py
 cybersec_scanner/__version__.py
 cybersec_scanner/config.py
 cybersec_scanner/exceptions.py
+cybersec_scanner/patterns.env
 cybersec_scanner/utils.py
 cybersec_scanner.egg-info/PKG-INFO
 cybersec_scanner.egg-info/SOURCES.txt

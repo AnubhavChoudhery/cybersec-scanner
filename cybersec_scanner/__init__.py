@@ -192,7 +192,7 @@ def scan_web(target_url: str, max_pages: int = 50, **kwargs):
     """
     from .scanners import LocalCrawler, process_crawler_findings
     crawler = LocalCrawler(target_url, max_pages=max_pages, **kwargs)
-    crawler.run()
+    crawler.crawl()
     return process_crawler_findings(crawler.findings)
 
 

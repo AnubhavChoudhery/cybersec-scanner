@@ -45,6 +45,7 @@ setup(
     ],
     package_data={
         "cybersec_scanner": [
+            "patterns.env",
             "database/schema.sql",
             "knowledge_base/*.json",
         ],
