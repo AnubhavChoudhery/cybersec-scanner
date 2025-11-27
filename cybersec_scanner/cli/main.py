@@ -62,7 +62,10 @@ def cmd_scan(args):
     from .. import scan_all
     
     try:
+        print_phase(1, "Initializing Security Scan")
+        
         if args.config:
+            print_info(f"Loading config from {args.config}")
             config = load_config(args.config)
             validate_config(config)
             results = scan_all(config_file=args.config)
@@ -78,6 +81,19 @@ def cmd_scan(args):
                 "max_commits": args.max_commits,
                 "mitm_traffic": args.mitm_traffic,
             }
+            
+            # Show enabled scanners
+            enabled = []
+            if args.git: enabled.append("Git")
+            if args.web: enabled.append("Web")
+            if args.mitm: enabled.append("MITM")
+            if args.runtime: enabled.append("Runtime")
+            if enabled:
+                print_info(f"Enabled scanners: {', '.join(enabled)}")
+            else:
+                print_warn("No scanners enabled. Use --git, --web, --mitm, or --runtime")
+            
+            print_phase(2, "Running Scanners")
             results = scan_all(**config)
         
         # Save results
@@ -91,14 +107,18 @@ def cmd_scan(args):
             json.dump(report, f, indent=2)
         
         # Print summary by scanner type
-        print(f"\n{Fore.GREEN}[OK] Scan complete. Total findings: {len(all_findings)}{Style.RESET_ALL}")
+        print_phase(3, "Scan Results")
+        print(f"{Fore.GREEN}Total findings: {len(all_findings)}{Style.RESET_ALL}")
         for scanner_type, findings in results.items():
             if findings:
-                print(f"  {Fore.YELLOW}- {scanner_type}: {len(findings)} findings{Style.RESET_ALL}")
+                print(f"  {Fore.YELLOW}• {scanner_type}: {len(findings)} findings{Style.RESET_ALL}")
+            else:
+                print(f"  {Fore.LIGHTBLACK_EX}• {scanner_type}: 0 findings{Style.RESET_ALL}")
         print_ok(f"Report saved to: {output_file}")
         
         # Build RAG if enabled
         if args.enable_rag or (args.config and config.get("rag", {}).get("enabled")):
+            print_phase(4, "Building Knowledge Graph")
             from ..rag import KnowledgeGraph
             kg = KnowledgeGraph()
             kg.build_from_audit(Path(output_file))
@@ -190,17 +210,24 @@ def cmd_query(args):
         
         # Query
         print_info(f"Querying: {args.question}")
-        answer = query_graph_and_llm(
+        print_info(f"Using model: {args.model}")
+        response = query_graph_and_llm(
             args.question,
             graph_path=str(graph_path),
             model=args.model,
             k=args.top_k,
         )
         
+        # Extract text from response (handle dict or string)
+        if isinstance(response, dict):
+            answer_text = response.get('text', response.get('raw', str(response)))
+        else:
+            answer_text = str(response)
+        
         # Format and display answer
         separator = f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}"
         print(f"\n{separator}")
-        print(f"{Fore.WHITE}{answer}{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}{answer_text}{Style.RESET_ALL}")
         print(separator)
         
         # Save to file if --output specified
@@ -211,7 +238,7 @@ def cmd_query(args):
                 f.write(f"Query: {args.question}\n")
                 f.write(f"Model: {args.model}\n")
                 f.write(f"{'='*60}\n\n")
-                f.write(str(answer))
+                f.write(answer_text)
                 f.write(f"\n\n{'='*60}\n")
             print_ok(f"Response saved to: {output_path}")
         

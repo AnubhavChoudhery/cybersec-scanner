@@ -1211,6 +1211,7 @@ The `patterns.env` file is excluded from version control by default (`.gitignore
 
 | Version | Changes |
 |---------|---------|
+| **1.0.5** | Enhanced scan output with phase headers, fixed query output to be human-readable (extracts text from response) |
 | **1.0.4** | Colored CLI output with colorama, `--output` flag for query command, simplified MITM traffic auto-sharing |
 | **1.0.3** | Unified MITM traffic file location via temp directory, added colorama dependency |
 | **1.0.2** | Fixed MITM traffic file path resolution bug |
