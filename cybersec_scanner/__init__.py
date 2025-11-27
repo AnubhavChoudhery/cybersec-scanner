@@ -175,25 +175,6 @@ def scan_git(root_path: str, max_commits: int = 50, **kwargs):
     return scan_git_history(root_path, max_commits=max_commits, **kwargs)
 
 
-def scan_mitm(traffic_file: str, **kwargs):
-    """
-    Convenience function to scan MITM proxy traffic.
-    
-    Args:
-        traffic_file: Path to NDJSON traffic file
-        **kwargs: Additional options for MITM scanner
-        
-    Returns:
-        List of findings
-        
-    Example:
-        >>> findings = scan_mitm("mitm_traffic.ndjson")
-        >>> print(f"Found {len(findings)} secrets in traffic")
-    """
-    from .scanners import parse_mitm_traffic
-    return parse_mitm_traffic(traffic_file, **kwargs)
-
-
 def scan_web(target_url: str, max_pages: int = 50, **kwargs):
     """
     Convenience function to scan web application.
@@ -306,6 +287,7 @@ def scan_all(config_file: str = None, **kwargs):
     git_enabled = git_config.get("enabled", config.get("enable_git", False))
     
     if git_enabled:
+        print("\n[PHASE 1] Git History Scan")
         from .scanners import scan_git_history
         from .exceptions import ScannerError
         try:
@@ -320,54 +302,95 @@ def scan_all(config_file: str = None, **kwargs):
     mitm_enabled = mitm_config.get("enabled", config.get("enable_mitm", False))
     
     if mitm_enabled:
-        print(f"  [mitm] Starting MITM workflow...")
+        print("\n[PHASE 2] MITM Network Inspection")
+        print("Note: MITM injection must be in your backend app (see documentation)")
+        print("      Add inject_mitm_proxy_advanced() as FIRST line in main.py")
+        print("[ACTION REQUIRED] Start your backend app now, then press Ctrl+C when done testing\n")
+        
         traffic_file = mitm_config.get("traffic_file") or config.get("mitm_traffic")
-        inject_proxy = mitm_config.get("inject_proxy", config.get("inject_proxy", True))
-        proxy_port = mitm_config.get("port", config.get("mitm_port", 8082))
         
         if traffic_file:
             from pathlib import Path
             from .scanners import parse_mitm_traffic
+            import time
             
             traffic_path = Path(traffic_file)
             
-            # Initialize MITM proxy injection if requested
-            if inject_proxy:
-                print(f"  [mitm] Injecting proxy on port {proxy_port}...")
-                try:
-                    from .scanners.inject_mitm_proxy import inject_mitm_proxy_advanced
-                    import os
-                    os.environ["MITM_PROXY_PORT"] = str(proxy_port)
-                    inject_mitm_proxy_advanced()
-                    print(f"  [mitm] ✓ Proxy active, HTTP clients patched")
-                    print(f"  [mitm] ✓ Traffic logging to: {traffic_path}")
-                except Exception as e:
-                    print(f"  [mitm] ✗ Proxy injection failed: {e}")
-            
+            # Clear traffic file for fresh run
             try:
-                # Parse traffic file (may be empty if proxy just started)
-                if traffic_path.exists() and traffic_path.stat().st_size > 0:
-                    result = parse_mitm_traffic(traffic_path)
-                    
-                    # Combine traffic findings and security findings
-                    all_mitm_findings = result["security_findings"] + result["traffic_findings"]
-                    results["mitm"] = all_mitm_findings
-                    
-                    print(f"  [mitm] Processed {result['proxied']} proxied requests, {result['bypassed']} bypassed")
-                    print(f"  [mitm] Found {len(result['security_findings'])} security issues")
-                else:
-                    print(f"  [mitm] Traffic file empty or not found (may need to run app first)")
-                    results["mitm"] = []
+                traffic_path.parent.mkdir(parents=True, exist_ok=True)
+                traffic_path.write_text("")
+                print(f"[OK] Cleared traffic file: {traffic_path}")
             except Exception as e:
-                print(f"  [mitm] ✗ Error parsing traffic: {e}")
+                print(f"[WARN] Could not clear traffic file: {e}")
+            
+            # Start mitmproxy addon for additional traffic capture
+            try:
+                from .scanners.network_scanner import run_mitm_dump, stop_mitm_dump
+                
+                proxy_port = mitm_config.get("port", config.get("mitm_port", 8082))
+                proc, addon_results_path = run_mitm_dump(port=proxy_port, duration=None)
+                
+                if proc is None:
+                    print(f"[ERROR] MITM proxy failed to launch: {addon_results_path}")
+                    results["mitm"] = []
+                else:
+                    print(f"[!] MITM running on port {proxy_port} — exercise your app then press Ctrl+C")
+                    try:
+                        # Wait for user to exercise the app
+                        while proc.poll() is None:
+                            time.sleep(1)
+                    except KeyboardInterrupt:
+                        print("\n[INFO] Stopping MITM proxy...")
+                    
+                    # Stop the proxy and get addon results
+                    addon_results = stop_mitm_dump(proc, addon_results_path)
+                    
+                    # Parse injector traffic file (from inject_mitm_proxy.py)
+                    if traffic_path.exists() and traffic_path.stat().st_size > 0:
+                        traffic_data = parse_mitm_traffic(traffic_path)
+                        
+                        # Combine findings from both sources
+                        all_mitm_findings = traffic_data["security_findings"] + traffic_data["traffic_findings"]
+                        
+                        # Add addon findings if available
+                        if isinstance(addon_results, dict) and "findings" in addon_results:
+                            all_mitm_findings.extend(addon_results["findings"])
+                        
+                        results["mitm"] = all_mitm_findings
+                        
+                        print(f"\n[OK] Injector traffic parsed")
+                        print(f"  Proxied: {traffic_data['proxied']}")
+                        print(f"  Bypassed: {traffic_data['bypassed']}")
+                        print(f"  Security issues: {len(traffic_data['security_findings'])}")
+                        
+                        if isinstance(addon_results, dict) and "error" not in addon_results:
+                            print(f"[OK] MITM addon complete")
+                            print(f"  Requests: {addon_results.get('requests', 0)}")
+                            print(f"  Responses: {addon_results.get('responses', 0)}")
+                    else:
+                        print(f"[WARN] Traffic file empty - ensure backend app has inject_mitm_proxy_advanced() imported")
+                        results["mitm"] = []
+                        
+            except ImportError:
+                print(f"[ERROR] network_scanner module not found - mitmproxy may not be installed")
+                print(f"        Install with: pip install mitmproxy")
+                results["mitm"] = []
+            except Exception as e:
+                print(f"[ERROR] MITM workflow failed: {e}")
+                import traceback
+                traceback.print_exc()
+                results["mitm"] = []
         else:
             print(f"  [mitm] Skipped - no traffic file specified")
+            results["mitm"] = []
     
     # Web scan
     web_config = scanner_config.get("web", {})
     web_enabled = web_config.get("enabled", config.get("enable_web", False))
     
     if web_enabled:
+        print("\n[PHASE 3] Web Application Scan")
         from .exceptions import ScannerError
         try:
             target = web_config.get("target") or config.get("target")
@@ -379,7 +402,7 @@ def scan_all(config_file: str = None, **kwargs):
             else:
                 print(f"  [web] Skipped - no target specified")
         except Exception as e:
-            print(f"  [web] ✗ Error: {e}")
+            print(f"  [web] [ERROR] {e}")
             # Don't raise - continue with other scanners
     
     # Runtime scan
@@ -387,6 +410,7 @@ def scan_all(config_file: str = None, **kwargs):
     runtime_enabled = runtime_config.get("enabled", config.get("enable_runtime", False))
     
     if runtime_enabled:
+        print("\n[PHASE 4] Runtime Inspection (Browser + Web Crawler)")
         print(f"  [runtime] Runtime scanner not yet implemented")
         # TODO: Implement runtime scanner
         # This would analyze running processes, open ports, loaded libraries, etc.

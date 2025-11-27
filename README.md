@@ -86,24 +86,83 @@ pip install cybersec-scanner[dev]
 ### CLI Usage
 
 ```bash
+# Show all available commands
+cybersec-scanner --help
+
 # Initialize configuration file
 cybersec-scanner init-config
 
 # Scan a Git repository
-cybersec-scanner scan-git /path/to/repo
+cybersec-scanner scan-git /path/to/repo --max-commits 50
 
 # Scan a web application
-cybersec-scanner scan-web http://localhost:8000
+cybersec-scanner scan-web http://localhost:8000 --max-pages 100
 
-# Full scan with config file
-cybersec-scanner scan --config my-config.yaml
+# Scan MITM traffic logs
+cybersec-scanner scan-mitm mitm_traffic.ndjson
+
+# Full multi-scanner workflow
+cybersec-scanner scan \
+  --git \
+  --web \
+  --mitm \
+  --runtime \
+  --root . \
+  --target http://localhost:8000 \
+  --max-commits 50 \
+  --mitm-traffic mitm_traffic.ndjson \
+  --output audit_report.json \
+  --enable-rag
 
 # Query findings with RAG
-cybersec-scanner query "What API keys were found?" --audit-report audit_report.json
+cybersec-scanner query "What API keys were found?" --audit audit_report.json
+
+# Build knowledge graph from existing report
+cybersec-scanner build-graph audit_report.json
 
 # Check version
-cybersec-scanner --version
+cybersec-scanner version
 ```
+
+### MITM Proxy Workflow
+
+The scanner provides interactive MITM inspection that captures real HTTP/HTTPS traffic:
+
+**1. Add MITM injection to your backend (one-time setup):**
+
+```python
+# backend/app/main.py - MUST BE FIRST IMPORT
+from cybersec_scanner.scanners.inject_mitm_proxy import inject_mitm_proxy_advanced
+inject_mitm_proxy_advanced()
+
+# Now import your framework
+from fastapi import FastAPI
+# ... rest of your code
+```
+
+**2. Run the scanner with MITM enabled:**
+
+```bash
+cybersec-scanner scan \
+  --mitm \
+  --mitm-traffic mitm_traffic.ndjson \
+  --output audit_report.json
+```
+
+**3. Start your backend when prompted:**
+
+The scanner will start the MITM proxy and wait for you to start your backend and exercise the app.
+
+```bash
+# In another terminal
+uvicorn backend.app.main:app --reload
+```
+
+**4. Test your application** - make requests, test endpoints
+
+**5. Press Ctrl+C** in the scanner terminal when done
+
+The scanner will parse all captured traffic and generate the audit report.
 
 ### Python SDK Usage
 
@@ -135,6 +194,162 @@ config = {
 }
 
 results = scan_all(config)
+```
+
+## CLI Command Reference
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `scan` | Run comprehensive scan with multiple scanners |
+| `scan-git` | Scan Git repository for committed secrets |
+| `scan-web` | Scan web application endpoints |
+| `scan-mitm` | Parse MITM traffic logs |
+| `query` | Query findings using RAG/LLM |
+| `build-graph` | Build knowledge graph from audit report |
+| `init-config` | Create default YAML configuration |
+| `version` | Show version information |
+| `install-cert` | Install mitmproxy CA certificate |
+| `start-proxy` | Start MITM proxy daemon |
+
+### Scan Command Options
+
+```bash
+cybersec-scanner scan [OPTIONS]
+```
+
+**Scanner Flags:**
+- `--git` - Enable Git history scanner
+- `--web` - Enable web application scanner
+- `--mitm` - Enable MITM traffic analysis
+- `--runtime` - Enable browser runtime inspector (Playwright)
+
+**Scanner Configuration:**
+- `--root PATH` - Root directory for Git scan (default: `.`)
+- `--target URL` - Target URL for web scan
+- `--max-commits N` - Maximum Git commits to scan (default: 50)
+- `--mitm-traffic PATH` - Path to MITM traffic NDJSON file
+
+**Output Options:**
+- `--output PATH`, `-o PATH` - Output audit report file (default: `audit_report.json`)
+- `--config PATH`, `-c PATH` - Load settings from YAML config file
+- `--enable-rag` - Build knowledge graph after scan for RAG queries
+
+**Example - Full Scan:**
+```bash
+cybersec-scanner scan \
+  --git \
+  --web \
+  --mitm \
+  --root ~/myproject \
+  --target http://localhost:8000 \
+  --max-commits 100 \
+  --mitm-traffic mitm_traffic.ndjson \
+  --output security_audit.json \
+  --enable-rag
+```
+
+### Query Command
+
+```bash
+cybersec-scanner query "your question" [OPTIONS]
+```
+
+**Options:**
+- `--audit PATH` - Audit report to build graph from (if graph doesn't exist)
+- `--graph PATH` - Existing knowledge graph file (default: `rag/graph.gpickle`)
+- `--model NAME` - Ollama model to use (default: `gemma3:1b`)
+- `--top-k N` - Number of findings to retrieve (default: 5)
+
+**Example:**
+```bash
+# Query with existing graph
+cybersec-scanner query "What AWS credentials were found?"
+
+# Build graph and query
+cybersec-scanner query "List all high severity findings" --audit audit_report.json
+
+# Use different model
+cybersec-scanner query "Explain the security risks" --model llama3:8b
+```
+
+### Individual Scanner Commands
+
+**Git Scanner:**
+```bash
+cybersec-scanner scan-git [REPO_PATH] [OPTIONS]
+
+# Options:
+#   --max-commits N     Max commits to scan (default: 50)
+#   --output PATH       Output JSON file
+
+# Example:
+cybersec-scanner scan-git . --max-commits 100 --output git_findings.json
+```
+
+**Web Scanner:**
+```bash
+cybersec-scanner scan-web URL [OPTIONS]
+
+# Options:
+#   --max-pages N       Max pages to crawl (default: 50)
+#   --output PATH       Output JSON file
+
+# Example:
+cybersec-scanner scan-web http://localhost:3000 --max-pages 200
+```
+
+**MITM Scanner:**
+```bash
+cybersec-scanner scan-mitm TRAFFIC_FILE [OPTIONS]
+
+# Options:
+#   --output PATH       Output JSON file
+
+# Example:
+cybersec-scanner scan-mitm mitm_traffic.ndjson --output mitm_findings.json
+```
+
+### Configuration File
+
+Create a YAML config to avoid long command lines:
+
+```bash
+cybersec-scanner init-config --output my-config.yaml
+```
+
+**Example `my-config.yaml`:**
+```yaml
+scanner:
+  git:
+    enabled: true
+    root: "."
+    max_commits: 100
+  
+  web:
+    enabled: true
+    target: "http://localhost:8000"
+    max_pages: 300
+  
+  mitm:
+    enabled: true
+    traffic_file: "mitm_traffic.ndjson"
+  
+  runtime:
+    enabled: false
+
+output:
+  file: "audit_report.json"
+
+rag:
+  enabled: true
+  model: "gemma3:1b"
+```
+
+**Usage:**
+```bash
+cybersec-scanner scan --config my-config.yaml
 ```
 
 ## 📋 Required Files

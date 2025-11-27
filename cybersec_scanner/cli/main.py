@@ -50,11 +50,11 @@ def cmd_scan(args):
             json.dump(report, f, indent=2)
         
         # Print summary by scanner type
-        print(f"\n✓ Scan complete. Total findings: {len(all_findings)}")
+        print(f"\n[OK] Scan complete. Total findings: {len(all_findings)}")
         for scanner_type, findings in results.items():
             if findings:
                 print(f"  - {scanner_type}: {len(findings)} findings")
-        print(f"✓ Report saved to: {output_file}")
+        print(f"[OK] Report saved to: {output_file}")
         
         # Build RAG if enabled
         if args.enable_rag or (args.config and config.get("rag", {}).get("enabled")):
@@ -62,11 +62,11 @@ def cmd_scan(args):
             kg = KnowledgeGraph()
             kg.build_from_audit(Path(output_file))
             kg.save()
-            print("✓ Knowledge graph built successfully")
+            print("[OK] Knowledge graph built successfully")
         
         return 0
     except CyberSecScannerError as e:
-        print(f"✗ Error: {e}", file=sys.stderr)
+        print(f"[ERROR] {e}", file=sys.stderr)
         return 1
 
 
@@ -81,11 +81,11 @@ def cmd_scan_git(args):
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump({"findings": findings}, f, indent=2)
         
-        print(f"✓ Git scan complete. Found {len(findings)} findings.")
-        print(f"✓ Report saved to: {output_file}")
+        print(f"[OK] Git scan complete. Found {len(findings)} findings.")
+        print(f"[OK] Report saved to: {output_file}")
         return 0
     except Exception as e:
-        print(f"✗ Git scan failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Git scan failed: {e}", file=sys.stderr)
         return 1
 
 
@@ -100,11 +100,11 @@ def cmd_scan_web(args):
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump({"findings": findings}, f, indent=2)
         
-        print(f"✓ Web scan complete. Found {len(findings)} findings.")
-        print(f"✓ Report saved to: {output_file}")
+        print(f"[OK] Web scan complete. Found {len(findings)} findings.")
+        print(f"[OK] Report saved to: {output_file}")
         return 0
     except Exception as e:
-        print(f"✗ Web scan failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Web scan failed: {e}", file=sys.stderr)
         return 1
 
 
@@ -119,11 +119,11 @@ def cmd_scan_mitm(args):
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump({"findings": findings}, f, indent=2)
         
-        print(f"✓ MITM scan complete. Found {len(findings)} findings.")
-        print(f"✓ Report saved to: {output_file}")
+        print(f"[OK] MITM scan complete. Found {len(findings)} findings.")
+        print(f"[OK] Report saved to: {output_file}")
         return 0
     except Exception as e:
-        print(f"✗ MITM scan failed: {e}", file=sys.stderr)
+        print(f"[ERROR] MITM scan failed: {e}", file=sys.stderr)
         return 1
 
 
@@ -136,14 +136,14 @@ def cmd_query(args):
         graph_path = Path(args.graph or "rag/graph.gpickle")
         if not graph_path.exists():
             if not args.audit:
-                print("✗ No graph found. Provide --audit to build graph first.", file=sys.stderr)
+                print("[ERROR] No graph found. Provide --audit to build graph first.", file=sys.stderr)
                 return 1
             
             print(f"Building knowledge graph from {args.audit}...")
             kg = KnowledgeGraph()
             kg.build_from_audit(Path(args.audit))
             kg.save(graph_path)
-            print("✓ Graph built successfully")
+            print("[OK] Graph built successfully")
         
         # Query
         print(f"Querying: {args.question}")
@@ -159,7 +159,7 @@ def cmd_query(args):
         print("="*60)
         return 0
     except Exception as e:
-        print(f"✗ Query failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Query failed: {e}", file=sys.stderr)
         return 1
 
 
@@ -170,7 +170,7 @@ def cmd_build_graph(args):
     try:
         audit_path = Path(args.audit)
         if not audit_path.exists():
-            print(f"✗ Audit report not found: {audit_path}", file=sys.stderr)
+            print(f"[ERROR] Audit report not found: {audit_path}", file=sys.stderr)
             return 1
         
         print(f"Building knowledge graph from {audit_path}...")
@@ -181,14 +181,14 @@ def cmd_build_graph(args):
         kg.save(output_path)
         
         stats = kg.stats()
-        print("✓ Knowledge graph built successfully")
+        print("[OK] Knowledge graph built successfully")
         print(f"  Findings: {stats['findings']}")
         print(f"  CWE nodes: {stats['cwes']}")
         print(f"  OWASP nodes: {stats['owasps']}")
         print(f"  Saved to: {output_path}")
         return 0
     except Exception as e:
-        print(f"✗ Graph building failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Graph building failed: {e}", file=sys.stderr)
         return 1
 
 
@@ -197,11 +197,11 @@ def cmd_init_config(args):
     output = args.output or "cybersec-config.yaml"
     try:
         create_default_config(output)
-        print(f"✓ Created configuration file: {output}")
+        print(f"[OK] Created configuration file: {output}")
         print("  Edit this file and use: cybersec-scanner scan --config " + output)
         return 0
     except Exception as e:
-        print(f"✗ Failed to create config: {e}", file=sys.stderr)
+        print(f"[ERROR] Failed to create config: {e}", file=sys.stderr)
         return 1
 
 
@@ -232,7 +232,7 @@ def cmd_install_mitm_cert(args):
         finally:
             sys.argv = old_argv
     except Exception as e:
-        print(f"✗ Certificate installation failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Certificate installation failed: {e}", file=sys.stderr)
         return 1
 
 
@@ -251,14 +251,14 @@ def cmd_start_proxy(args):
             traffic_path = Path(args.traffic_file)
             traffic_path.parent.mkdir(parents=True, exist_ok=True)
             traffic_path.write_text("")
-            print(f"✓ Traffic file cleared: {args.traffic_file}")
+            print(f"[OK] Traffic file cleared: {args.traffic_file}")
         
         inject_mitm_proxy_advanced()
         
-        print(f"\n✓ MITM Proxy is active on http://127.0.0.1:{args.port}")
-        print(f"✓ HTTP client libraries auto-patched (requests, httpx, urllib, aiohttp)")
+        print(f"\n[OK] MITM Proxy is active on http://127.0.0.1:{args.port}")
+        print(f"[OK] HTTP client libraries auto-patched (requests, httpx, urllib, aiohttp)")
         if args.traffic_file:
-            print(f"✓ Traffic logging to: {args.traffic_file}")
+            print(f"[OK] Traffic logging to: {args.traffic_file}")
         print("\n[INFO] Run your application now. Press Ctrl+C to stop.")
         
         # Keep alive until user stops
@@ -267,11 +267,11 @@ def cmd_start_proxy(args):
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\n✓ Proxy stopped by user")
+            print("\n[OK] Proxy stopped by user")
             return 0
             
     except Exception as e:
-        print(f"✗ Proxy startup failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Proxy startup failed: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         return 1

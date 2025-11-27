@@ -58,9 +58,22 @@ def load_patterns_from_env():
         dict: Dictionary mapping pattern names to compiled regex objects
     """
     patterns = {}
-    env_file = Path(__file__).parent / "patterns.env"
     
-    if not env_file.exists():
+    # Try multiple locations for patterns.env
+    # 1. In the cybersec_scanner package directory
+    # 2. In the project root (for development/editable installs)
+    possible_locations = [
+        Path(__file__).parent / "patterns.env",
+        Path(__file__).parent.parent / "patterns.env",
+    ]
+    
+    env_file = None
+    for location in possible_locations:
+        if location.exists():
+            env_file = location
+            break
+    
+    if not env_file:
         print(f"[WARNING] {env_file} not found. Using minimal fallback patterns.")
         print("          Create patterns.env from patterns.env.example for full coverage.")
         # Fallback to minimal patterns
