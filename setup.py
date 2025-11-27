@@ -30,11 +30,11 @@ setup(
     description=version["__description__"],
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext",
+    url="https://github.com/AnubhavChoudhery/cybersec-scanner",
     project_urls={
-        "Bug Reports": "https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext/issues",
-        "Source": "https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext",
-        "Documentation": "https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext/blob/main/README.md",
+        "Bug Reports": "https://github.com/AnubhavChoudhery/cybersec-scanner/issues",
+        "Source": "https://github.com/AnubhavChoudhery/cybersec-scanner",
+        "Documentation": "https://github.com/AnubhavChoudhery/cybersec-scanner/blob/main/README.md",
     },
     packages=find_packages(exclude=["tests", "tests.*", "examples"]),
     package_data={

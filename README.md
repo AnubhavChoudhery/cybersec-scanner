@@ -1,6 +1,6 @@
 # CyberSec Scanner
 
-[![Tests](https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext/workflows/Tests/badge.svg)](https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext/actions)
+[![Tests](https://github.com/AnubhavChoudhery/cybersec-scanner/workflows/Tests/badge.svg)](https://github.com/AnubhavChoudhery/cybersec-scanner/actions)
 [![Python](https://img.shields.io/pypi/pyversions/cybersec-scanner.svg)](https://pypi.org/project/cybersec-scanner/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -59,8 +59,8 @@ pip install cybersec-scanner
 ### From Source
 
 ```bash
-git clone https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext.git
-cd CyberSec_Chrome_Ext
+git clone https://github.com/AnubhavChoudhery/cybersec-scanner.git
+cd cybersec-scanner
 pip install -e .
 ```
 
@@ -150,7 +150,7 @@ This file contains regex patterns for detecting secrets. **Copy it from the repo
 cp patterns.env /your/project/directory/
 
 # If you installed from PyPI, download from GitHub
-curl -o patterns.env https://raw.githubusercontent.com/AnubhavChoudhery/CyberSec_Chrome_Ext/main/patterns.env
+curl -o patterns.env https://raw.githubusercontent.com/AnubhavChoudhery/cybersec-scanner/main/patterns.env
 ```
 
 The file includes 58+ detection patterns for major providers:

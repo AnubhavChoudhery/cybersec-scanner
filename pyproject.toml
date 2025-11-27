@@ -47,10 +47,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext"
-Documentation = "https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext/blob/main/README.md"
-Repository = "https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext"
-Issues = "https://github.com/AnubhavChoudhery/CyberSec_Chrome_Ext/issues"
+Homepage = "https://github.com/AnubhavChoudhery/cybersec-scanner"
+Documentation = "https://github.com/AnubhavChoudhery/cybersec-scanner/blob/main/README.md"
+Repository = "https://github.com/AnubhavChoudhery/cybersec-scanner"
+Issues = "https://github.com/AnubhavChoudhery/cybersec-scanner/issues"
 
 [project.scripts]
 cybersec-scanner = "cybersec_scanner.cli.main:main"
