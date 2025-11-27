@@ -45,7 +45,9 @@ MITM_PROXY_URL = f"http://127.0.0.1:{MITM_PROXY_PORT}"
 # Always enabled - full proxy mode with selective bypass
 ENABLE_MITM = True
 
-TRAFFIC_LOG = Path(__file__).parent / "mitm_traffic.ndjson"
+# Traffic log can be overridden via environment variable or function parameter
+_default_traffic_log = Path(__file__).parent / "mitm_traffic.ndjson"
+TRAFFIC_LOG = Path(os.getenv("MITM_TRAFFIC_FILE", str(_default_traffic_log)))
 _lock = threading.Lock()
 
 # Simple terminal logging for visibility
@@ -788,20 +790,35 @@ def setup_env_vars():
 # MAIN ENTRY
 # ============================
 
-def inject_mitm_proxy_advanced():
+def inject_mitm_proxy_advanced(traffic_file: Optional[str] = None):
     """Initialize MITM proxy with automatic HTTP client patching.
     
     Full proxy mode is always enabled with intelligent domain bypass.
-    No environment variables required (except optional MITM_PROXY_PORT).
+    
+    Args:
+        traffic_file: Optional path to traffic log file. If not provided,
+                     uses MITM_TRAFFIC_FILE env var or default location.
+    
+    Environment Variables:
+        MITM_PROXY_PORT: Proxy port (default: 8082)
+        MITM_TRAFFIC_FILE: Traffic log file path
     """
+    global TRAFFIC_LOG
+    
+    # Override traffic log location if specified
+    if traffic_file:
+        TRAFFIC_LOG = Path(traffic_file).resolve()
+    
     # Clear/create NDJSON traffic log on startup
     try:
         with _lock:
+            TRAFFIC_LOG.parent.mkdir(parents=True, exist_ok=True)
             TRAFFIC_LOG.write_text("")  # truncate existing file
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[MITM] Warning: Could not initialize traffic log: {e}")
 
     print(f"[MITM] Proxy active on {MITM_PROXY_URL}")
+    print(f"[MITM] Traffic log: {TRAFFIC_LOG}")
     print(f"[MITM] Bypass mode: AWS, OAuth, AI providers, payments, CDNs")
     _patch_ssl_global()
     setup_env_vars()

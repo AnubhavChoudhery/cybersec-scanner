@@ -144,7 +144,9 @@ The scanner provides interactive MITM inspection that captures real HTTP/HTTPS t
 ```python
 # backend/app/main.py - MUST BE FIRST IMPORT
 from cybersec_scanner.scanners.inject_mitm_proxy import inject_mitm_proxy_advanced
-inject_mitm_proxy_advanced()
+
+# Specify where to save traffic (must match --mitm-traffic path)
+inject_mitm_proxy_advanced(traffic_file="mitm_traffic.ndjson")
 
 # Now import your framework
 from fastapi import FastAPI
