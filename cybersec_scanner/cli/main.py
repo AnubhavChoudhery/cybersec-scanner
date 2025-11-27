@@ -15,6 +15,47 @@ from ..__version__ import __version__
 from ..exceptions import CyberSecScannerError
 from .config import load_config, create_default_config, validate_config
 
+# Colorama for colored output
+try:
+    from colorama import init, Fore, Style
+    init()
+except ImportError:
+    # Fallback if colorama not available
+    class Fore:
+        RED = YELLOW = GREEN = CYAN = LIGHTBLACK_EX = WHITE = LIGHTRED_EX = LIGHTBLUE_EX = ""
+    class Style:
+        RESET_ALL = BRIGHT = ""
+
+
+def print_ok(msg):
+    """Print success message in green."""
+    print(f"{Fore.GREEN}[OK] {msg}{Style.RESET_ALL}")
+
+
+def print_error(msg):
+    """Print error message in red."""
+    print(f"{Fore.RED}[ERROR] {msg}{Style.RESET_ALL}", file=sys.stderr)
+
+
+def print_warn(msg):
+    """Print warning message in yellow."""
+    print(f"{Fore.YELLOW}[WARN] {msg}{Style.RESET_ALL}")
+
+
+def print_info(msg):
+    """Print info message in cyan."""
+    print(f"{Fore.CYAN}[INFO] {msg}{Style.RESET_ALL}")
+
+
+def print_phase(phase_num, title):
+    """Print phase header."""
+    print(f"\n{Fore.GREEN}[PHASE {phase_num}] {title}{Style.RESET_ALL}")
+
+
+def print_skip(msg):
+    """Print skipped message in gray."""
+    print(f"{Fore.LIGHTBLACK_EX}  [{msg}] Skipped{Style.RESET_ALL}")
+
 
 def cmd_scan(args):
     """Execute full scan with all enabled scanners."""
@@ -50,11 +91,11 @@ def cmd_scan(args):
             json.dump(report, f, indent=2)
         
         # Print summary by scanner type
-        print(f"\n[OK] Scan complete. Total findings: {len(all_findings)}")
+        print(f"\n{Fore.GREEN}[OK] Scan complete. Total findings: {len(all_findings)}{Style.RESET_ALL}")
         for scanner_type, findings in results.items():
             if findings:
-                print(f"  - {scanner_type}: {len(findings)} findings")
-        print(f"[OK] Report saved to: {output_file}")
+                print(f"  {Fore.YELLOW}- {scanner_type}: {len(findings)} findings{Style.RESET_ALL}")
+        print_ok(f"Report saved to: {output_file}")
         
         # Build RAG if enabled
         if args.enable_rag or (args.config and config.get("rag", {}).get("enabled")):
@@ -62,11 +103,11 @@ def cmd_scan(args):
             kg = KnowledgeGraph()
             kg.build_from_audit(Path(output_file))
             kg.save()
-            print("[OK] Knowledge graph built successfully")
+            print_ok("Knowledge graph built successfully")
         
         return 0
     except CyberSecScannerError as e:
-        print(f"[ERROR] {e}", file=sys.stderr)
+        print_error(str(e))
         return 1
 
 
@@ -81,11 +122,11 @@ def cmd_scan_git(args):
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump({"findings": findings}, f, indent=2)
         
-        print(f"[OK] Git scan complete. Found {len(findings)} findings.")
-        print(f"[OK] Report saved to: {output_file}")
+        print_ok(f"Git scan complete. Found {len(findings)} findings.")
+        print_ok(f"Report saved to: {output_file}")
         return 0
     except Exception as e:
-        print(f"[ERROR] Git scan failed: {e}", file=sys.stderr)
+        print_error(f"Git scan failed: {e}")
         return 1
 
 
@@ -100,11 +141,11 @@ def cmd_scan_web(args):
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump({"findings": findings}, f, indent=2)
         
-        print(f"[OK] Web scan complete. Found {len(findings)} findings.")
-        print(f"[OK] Report saved to: {output_file}")
+        print_ok(f"Web scan complete. Found {len(findings)} findings.")
+        print_ok(f"Report saved to: {output_file}")
         return 0
     except Exception as e:
-        print(f"[ERROR] Web scan failed: {e}", file=sys.stderr)
+        print_error(f"Web scan failed: {e}")
         return 1
 
 
@@ -119,11 +160,11 @@ def cmd_scan_mitm(args):
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump({"findings": findings}, f, indent=2)
         
-        print(f"[OK] MITM scan complete. Found {len(findings)} findings.")
-        print(f"[OK] Report saved to: {output_file}")
+        print_ok(f"MITM scan complete. Found {len(findings)} findings.")
+        print_ok(f"Report saved to: {output_file}")
         return 0
     except Exception as e:
-        print(f"[ERROR] MITM scan failed: {e}", file=sys.stderr)
+        print_error(f"MITM scan failed: {e}")
         return 1
 
 
@@ -136,19 +177,19 @@ def cmd_query(args):
         graph_path = Path(args.graph or "rag/graph.gpickle")
         if not graph_path.exists():
             if not args.audit:
-                print("[ERROR] No graph found. Provide --audit to build graph first.", file=sys.stderr)
+                print_error("No graph found. Provide --audit to build graph first.")
                 return 1
             
-            print(f"Building knowledge graph from {args.audit}...")
+            print_info(f"Building knowledge graph from {args.audit}...")
             kg = KnowledgeGraph()
             kg.build_from_audit(Path(args.audit))
             # Ensure directory exists
             graph_path.parent.mkdir(parents=True, exist_ok=True)
             saved_path = kg.save(graph_path)
-            print(f"[OK] Graph built successfully: {saved_path}")
+            print_ok(f"Graph built successfully: {saved_path}")
         
         # Query
-        print(f"Querying: {args.question}")
+        print_info(f"Querying: {args.question}")
         answer = query_graph_and_llm(
             args.question,
             graph_path=str(graph_path),
@@ -156,12 +197,27 @@ def cmd_query(args):
             k=args.top_k,
         )
         
-        print("\n" + "="*60)
-        print(answer)
-        print("="*60)
+        # Format and display answer
+        separator = f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}"
+        print(f"\n{separator}")
+        print(f"{Fore.WHITE}{answer}{Style.RESET_ALL}")
+        print(separator)
+        
+        # Save to file if --output specified
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"Query: {args.question}\n")
+                f.write(f"Model: {args.model}\n")
+                f.write(f"{'='*60}\n\n")
+                f.write(str(answer))
+                f.write(f"\n\n{'='*60}\n")
+            print_ok(f"Response saved to: {output_path}")
+        
         return 0
     except Exception as e:
-        print(f"[ERROR] Query failed: {e}", file=sys.stderr)
+        print_error(f"Query failed: {e}")
         return 1
 
 
@@ -172,10 +228,10 @@ def cmd_build_graph(args):
     try:
         audit_path = Path(args.audit)
         if not audit_path.exists():
-            print(f"[ERROR] Audit report not found: {audit_path}", file=sys.stderr)
+            print_error(f"Audit report not found: {audit_path}")
             return 1
         
-        print(f"Building knowledge graph from {audit_path}...")
+        print_info(f"Building knowledge graph from {audit_path}...")
         kg = KnowledgeGraph()
         kg.build_from_audit(audit_path)
         
@@ -183,14 +239,14 @@ def cmd_build_graph(args):
         kg.save(output_path)
         
         stats = kg.stats()
-        print("[OK] Knowledge graph built successfully")
-        print(f"  Findings: {stats['findings']}")
-        print(f"  CWE nodes: {stats['cwes']}")
-        print(f"  OWASP nodes: {stats['owasps']}")
-        print(f"  Saved to: {output_path}")
+        print_ok("Knowledge graph built successfully")
+        print(f"  {Fore.CYAN}Findings: {stats['findings']}{Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}CWE nodes: {stats['cwes']}{Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}OWASP nodes: {stats['owasps']}{Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}Saved to: {output_path}{Style.RESET_ALL}")
         return 0
     except Exception as e:
-        print(f"[ERROR] Graph building failed: {e}", file=sys.stderr)
+        print_error(f"Graph building failed: {e}")
         return 1
 
 
@@ -199,18 +255,18 @@ def cmd_init_config(args):
     output = args.output or "cybersec-config.yaml"
     try:
         create_default_config(output)
-        print(f"[OK] Created configuration file: {output}")
-        print("  Edit this file and use: cybersec-scanner scan --config " + output)
+        print_ok(f"Created configuration file: {output}")
+        print_info(f"Edit this file and use: cybersec-scanner scan --config {output}")
         return 0
     except Exception as e:
-        print(f"[ERROR] Failed to create config: {e}", file=sys.stderr)
+        print_error(f"Failed to create config: {e}")
         return 1
 
 
 def cmd_version(args):
     """Show version information."""
     from ..__version__ import __title__, __description__
-    print(f"{__title__} v{__version__}")
+    print(f"{Fore.CYAN}{__title__}{Style.RESET_ALL} v{Fore.GREEN}{__version__}{Style.RESET_ALL}")
     print(__description__)
     return 0
 
@@ -337,6 +393,7 @@ def main():
     query_parser.add_argument("--graph", help="Knowledge graph file")
     query_parser.add_argument("--model", default="gemma3:1b", help="LLM model to use")
     query_parser.add_argument("--top-k", type=int, default=5, help="Number of findings to retrieve")
+    query_parser.add_argument("--output", "-o", help="Save LLM response to file")
     query_parser.set_defaults(func=cmd_query)
     
     # Build-graph command

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: cybersec-scanner
-Version: 1.0.3
+Version: 1.0.4
 Summary: A comprehensive security scanner and RAG-based vulnerability analyzer
 Home-page: https://github.com/AnubhavChoudhery/cybersec-scanner
 Author: CyberSec Team
@@ -193,34 +193,27 @@ cybersec-scanner version
 
 ### MITM Proxy Workflow
 
-The scanner provides interactive MITM inspection that captures real HTTP/HTTPS traffic:
+The scanner provides interactive MITM inspection that captures real HTTP/HTTPS traffic. **Traffic files are automatically shared** between scanner and backend via a temp directory.
 
 **1. Add MITM injection to your backend (one-time setup):**
 
 ```python
 # backend/app/main.py - MUST BE FIRST IMPORT
 from cybersec_scanner.scanners.inject_mitm_proxy import inject_mitm_proxy_advanced
-from pathlib import Path
 
-# Use ABSOLUTE path to ensure scanner and backend write to same file
-traffic_file = Path(__file__).parent.parent / "mitm_traffic.ndjson"
-inject_mitm_proxy_advanced(traffic_file=str(traffic_file.resolve()))
+# No path needed - uses shared temp location automatically
+inject_mitm_proxy_advanced()
 
 # Now import your framework
 from fastapi import FastAPI
 # ... rest of your code
 ```
 
-**Important:** Use absolute paths! If your backend is in `backend/app/main.py`, the traffic file will be at `backend/mitm_traffic.ndjson`.
-
 **2. Run the scanner with MITM enabled:**
 
 ```bash
-# Use the SAME absolute path as in your backend
-cybersec-scanner scan \
-  --mitm \
-  --mitm-traffic /absolute/path/to/backend/mitm_traffic.ndjson \
-  --output audit_report.json
+# No --mitm-traffic flag needed - auto-discovers shared file
+cybersec-scanner scan --mitm --output audit_report.json
 ```
 
 **3. Start your backend when prompted:**
@@ -237,6 +230,12 @@ uvicorn backend.app.main:app --reload
 **5. Press Ctrl+C** in the scanner terminal when done
 
 The scanner will parse all captured traffic and generate the audit report.
+
+**Traffic File Location:**
+- Windows: `C:\Users\<user>\AppData\Local\Temp\cybersec_scanner\mitm_traffic.ndjson`
+- Linux/Mac: `/tmp/cybersec_scanner/mitm_traffic.ndjson`
+
+**Advanced:** You can override with `--mitm-traffic /custom/path.ndjson` if needed.
 
 ### Python SDK Usage
 
@@ -335,6 +334,7 @@ cybersec-scanner query "your question" [OPTIONS]
 - `--graph PATH` - Existing knowledge graph file (default: `rag/graph.gpickle`)
 - `--model NAME` - Ollama model to use (default: `gemma3:1b`)
 - `--top-k N` - Number of findings to retrieve (default: 5)
+- `--output PATH`, `-o PATH` - Save LLM response to file
 
 **Example:**
 ```bash
@@ -346,6 +346,9 @@ cybersec-scanner query "List all high severity findings" --audit audit_report.js
 
 # Use different model
 cybersec-scanner query "Explain the security risks" --model llama3:8b
+
+# Save response to file
+cybersec-scanner query "Summarize critical findings" --output security_summary.txt
 ```
 
 ### Individual Scanner Commands
@@ -424,6 +427,59 @@ rag:
 **Usage:**
 ```bash
 cybersec-scanner scan --config my-config.yaml
+```
+
+### Utility Commands
+
+**Build Knowledge Graph:**
+```bash
+cybersec-scanner build-graph AUDIT_FILE [OPTIONS]
+
+# Options:
+#   --output PATH, -o    Output graph file (default: rag/graph.gpickle)
+
+# Example:
+cybersec-scanner build-graph audit_report.json --output my_graph.gpickle
+```
+
+**Initialize Config File:**
+```bash
+cybersec-scanner init-config [OPTIONS]
+
+# Options:
+#   --output PATH, -o    Output config file path (default: cybersec-config.yaml)
+
+# Example:
+cybersec-scanner init-config --output my-config.yaml
+```
+
+**Show Version:**
+```bash
+cybersec-scanner version
+```
+
+**Install MITM Certificate:**
+```bash
+cybersec-scanner install-cert [OPTIONS]
+
+# Options:
+#   --port PORT          MITM proxy port (informational, default: 8082)
+#   --no-download        Skip HTTP download, use local cert only
+
+# Example:
+cybersec-scanner install-cert --port 8082
+```
+
+**Start MITM Proxy:**
+```bash
+cybersec-scanner start-proxy [OPTIONS]
+
+# Options:
+#   --port PORT          Proxy listen port (default: 8082)
+#   --traffic-file PATH  Traffic log file path (default: temp dir auto-shared)
+
+# Example:
+cybersec-scanner start-proxy --port 9000 --traffic-file ./my_traffic.ndjson
 ```
 
 ## 📋 Required Files
@@ -1170,6 +1226,15 @@ The `patterns.env` file is excluded from version control by default (`.gitignore
 - Commit `patterns.env` to public repositories
 - Include actual secret values in pattern files
 - Share pattern files with untrusted parties
+
+## Version History
+
+| Version | Changes |
+|---------|---------|
+| **1.0.4** | Colored CLI output with colorama, `--output` flag for query command, simplified MITM traffic auto-sharing |
+| **1.0.3** | Unified MITM traffic file location via temp directory, added colorama dependency |
+| **1.0.2** | Fixed MITM traffic file path resolution bug |
+| **1.0.1** | Initial PyPI release with full scanner suite |
 
 ## License
 
