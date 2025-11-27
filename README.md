@@ -67,12 +67,23 @@ pip install -e .
 ### Optional Dependencies
 
 ```bash
+# For MITM proxy (HTTPS traffic inspection)
+pip install cybersec-scanner[mitm]
+
+# For browser runtime inspection (Playwright)
+pip install cybersec-scanner[browser]
+
 # For vector search (RAG features)
 pip install cybersec-scanner[vector]
+
+# Install everything
+pip install cybersec-scanner[all]
 
 # For development
 pip install cybersec-scanner[dev]
 ```
+
+**Note:** The base installation includes Git scanning, web crawling, and RAG analysis. MITM and browser features require additional dependencies.
 
 ### System Requirements
 

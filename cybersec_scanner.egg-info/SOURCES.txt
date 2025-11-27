@@ -7,6 +7,7 @@ README.md.backup
 __init__.py
 config.py
 cybersec-config.example.yaml
+example_backend_integration.py
 example_workflow.sh
 exceptions.py
 inject_mitm_proxy.py
@@ -33,7 +34,6 @@ cybersec_scanner/__main__.py
 cybersec_scanner/__version__.py
 cybersec_scanner/config.py
 cybersec_scanner/exceptions.py
-cybersec_scanner/patterns.env
 cybersec_scanner/utils.py
 cybersec_scanner.egg-info/PKG-INFO
 cybersec_scanner.egg-info/SOURCES.txt
@@ -57,6 +57,8 @@ cybersec_scanner/rag/vector_store.py
 cybersec_scanner/scanners/__init__.py
 cybersec_scanner/scanners/browser_scanner.py
 cybersec_scanner/scanners/git_scanner.py
+cybersec_scanner/scanners/inject_mitm_proxy.py
+cybersec_scanner/scanners/install_mitm_cert.py
 cybersec_scanner/scanners/mitm_processor.py
 cybersec_scanner/scanners/network_scanner.py
 cybersec_scanner/scanners/web_crawler.py

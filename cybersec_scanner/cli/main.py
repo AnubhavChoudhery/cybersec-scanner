@@ -142,8 +142,10 @@ def cmd_query(args):
             print(f"Building knowledge graph from {args.audit}...")
             kg = KnowledgeGraph()
             kg.build_from_audit(Path(args.audit))
-            kg.save(graph_path)
-            print("[OK] Graph built successfully")
+            # Ensure directory exists
+            graph_path.parent.mkdir(parents=True, exist_ok=True)
+            saved_path = kg.save(graph_path)
+            print(f"[OK] Graph built successfully: {saved_path}")
         
         # Query
         print(f"Querying: {args.question}")
