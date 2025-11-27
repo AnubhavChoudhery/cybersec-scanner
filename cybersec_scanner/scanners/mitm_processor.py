@@ -58,6 +58,7 @@ def parse_mitm_traffic(traffic_file):
                     elif stage == "security_finding":
                         security_findings.append({
                             "type": entry.get("type"),
+                            "summary": entry.get("description", "MITM security finding"),
                             "severity": entry.get("severity"),
                             "timestamp": entry.get("ts"),
                             "timestamp_human": entry.get("timestamp"),

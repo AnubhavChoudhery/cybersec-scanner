@@ -108,6 +108,25 @@ def cmd_scan_web(args):
         return 1
 
 
+def cmd_scan_mitm(args):
+    """Execute MITM traffic analysis."""
+    from .. import scan_mitm
+    
+    try:
+        findings = scan_mitm(args.traffic_file)
+        
+        output_file = args.output or "mitm_findings.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump({"findings": findings}, f, indent=2)
+        
+        print(f"✓ MITM scan complete. Found {len(findings)} findings.")
+        print(f"✓ Report saved to: {output_file}")
+        return 0
+    except Exception as e:
+        print(f"✗ MITM scan failed: {e}", file=sys.stderr)
+        return 1
+
+
 def cmd_query(args):
     """Query findings using RAG system."""
     from ..rag import query_graph_and_llm, KnowledgeGraph, Retriever
@@ -194,6 +213,70 @@ def cmd_version(args):
     return 0
 
 
+def cmd_install_mitm_cert(args):
+    """Install mitmproxy CA certificate to system trust store."""
+    try:
+        from ..scanners.install_mitm_cert import main as install_cert_main
+        import sys
+        # Temporarily replace sys.argv to pass args to install script
+        old_argv = sys.argv
+        sys.argv = ["install_mitm_cert"]
+        if args.port:
+            sys.argv.extend(["--port", str(args.port)])
+        if args.no_download:
+            sys.argv.append("--no-download")
+        
+        try:
+            install_cert_main()
+            return 0
+        finally:
+            sys.argv = old_argv
+    except Exception as e:
+        print(f"✗ Certificate installation failed: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_start_proxy(args):
+    """Start MITM proxy with automatic HTTP client patching."""
+    try:
+        print(f"Starting MITM proxy on port {args.port}...")
+        from ..scanners.inject_mitm_proxy import inject_mitm_proxy_advanced
+        import os
+        
+        os.environ["MITM_PROXY_PORT"] = str(args.port)
+        
+        # Clear traffic file if requested
+        if args.traffic_file:
+            from pathlib import Path
+            traffic_path = Path(args.traffic_file)
+            traffic_path.parent.mkdir(parents=True, exist_ok=True)
+            traffic_path.write_text("")
+            print(f"✓ Traffic file cleared: {args.traffic_file}")
+        
+        inject_mitm_proxy_advanced()
+        
+        print(f"\n✓ MITM Proxy is active on http://127.0.0.1:{args.port}")
+        print(f"✓ HTTP client libraries auto-patched (requests, httpx, urllib, aiohttp)")
+        if args.traffic_file:
+            print(f"✓ Traffic logging to: {args.traffic_file}")
+        print("\n[INFO] Run your application now. Press Ctrl+C to stop.")
+        
+        # Keep alive until user stops
+        import time
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n✓ Proxy stopped by user")
+            return 0
+            
+    except Exception as e:
+        print(f"✗ Proxy startup failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -239,6 +322,12 @@ def main():
     web_parser.add_argument("--output", "-o", help="Output file")
     web_parser.set_defaults(func=cmd_scan_web)
     
+    # MITM scan command
+    mitm_parser = subparsers.add_parser("scan-mitm", help="Scan MITM traffic logs")
+    mitm_parser.add_argument("traffic_file", help="Path to mitm_traffic.ndjson file")
+    mitm_parser.add_argument("--output", "-o", help="Output file")
+    mitm_parser.set_defaults(func=cmd_scan_mitm)
+    
     # Query command
     query_parser = subparsers.add_parser("query", help="Query findings using RAG")
     query_parser.add_argument("question", help="Question to ask")
@@ -262,6 +351,18 @@ def main():
     # Version command
     version_parser = subparsers.add_parser("version", help="Show version information")
     version_parser.set_defaults(func=cmd_version)
+    
+    # MITM certificate installation command
+    cert_parser = subparsers.add_parser("install-cert", help="Install mitmproxy CA certificate to system")
+    cert_parser.add_argument("--port", type=int, default=8082, help="MITM proxy port (informational)")
+    cert_parser.add_argument("--no-download", action="store_true", help="Skip HTTP download, use local cert only")
+    cert_parser.set_defaults(func=cmd_install_mitm_cert)
+    
+    # MITM proxy start command
+    proxy_parser = subparsers.add_parser("start-proxy", help="Start MITM proxy with auto-patching")
+    proxy_parser.add_argument("--port", type=int, default=8082, help="Proxy listen port")
+    proxy_parser.add_argument("--traffic-file", default="mitm_traffic.ndjson", help="Traffic log file path")
+    proxy_parser.set_defaults(func=cmd_start_proxy)
     
     args = parser.parse_args()
     

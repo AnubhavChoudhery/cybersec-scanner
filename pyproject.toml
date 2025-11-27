@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cybersec-scanner"
-version = "0.1.4"
+version = "0.1.6"
 description = "A comprehensive security scanner and RAG-based vulnerability analyzer"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -66,8 +66,11 @@ packages = [
 
 [tool.setuptools.package-data]
 cybersec_scanner = [
+    "patterns.env",
     "database/schema.sql",
     "knowledge_base/*.json",
+    "scanners/inject_mitm_proxy.py",
+    "scanners/install_mitm_cert.py",
 ]
 
 [tool.pytest.ini_options]

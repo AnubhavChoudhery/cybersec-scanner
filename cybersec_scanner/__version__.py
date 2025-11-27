@@ -1,6 +1,6 @@
 """Version information for cybersec-scanner."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.6"
 __version_info__ = tuple(int(i) for i in __version__.split("."))
 
 __title__ = "cybersec-scanner"
