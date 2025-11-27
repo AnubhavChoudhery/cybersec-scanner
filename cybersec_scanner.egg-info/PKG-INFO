@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: cybersec-scanner
-Version: 0.1.9
+Version: 1.0.0
 Summary: A comprehensive security scanner and RAG-based vulnerability analyzer
 Home-page: https://github.com/AnubhavChoudhery/cybersec-scanner
 Author: CyberSec Team
@@ -12,7 +12,7 @@ Project-URL: Documentation, https://github.com/AnubhavChoudhery/cybersec-scanner
 Project-URL: Repository, https://github.com/AnubhavChoudhery/cybersec-scanner
 Project-URL: Issues, https://github.com/AnubhavChoudhery/cybersec-scanner/issues
 Keywords: security,scanner,vulnerability,audit,rag,llm,cybersecurity
-Classifier: Development Status :: 3 - Alpha
+Classifier: Development Status :: 4 - Beta
 Classifier: Intended Audience :: Developers
 Classifier: Topic :: Security
 Classifier: Topic :: Software Development :: Quality Assurance
@@ -30,7 +30,6 @@ Requires-Dist: ollama>=0.1.0
 Requires-Dist: mitmproxy>=10.0.0
 Requires-Dist: playwright>=1.40.0
 Requires-Dist: sentence-transformers>=2.0.0
-Requires-Dist: hnswlib>=0.7.0
 Provides-Extra: mitm
 Requires-Dist: mitmproxy>=10.0.0; extra == "mitm"
 Provides-Extra: browser
