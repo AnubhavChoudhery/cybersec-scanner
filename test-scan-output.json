@@ -1,0 +1,13 @@
+{
+  "findings": [
+    {
+      "type": "git_pattern",
+      "commit": "150819177a84",
+      "path": "README.md",
+      "pattern": "Generic API Key",
+      "snippet": "[REDACTED]",
+      "original_length": 30,
+      "severity": "HIGH"
+    }
+  ]
+}

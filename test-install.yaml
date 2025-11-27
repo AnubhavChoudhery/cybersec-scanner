@@ -1,0 +1,28 @@
+scanner:
+  git:
+    enabled: true
+    root: .
+    max_commits: 50
+    ignore_patterns:
+    - '*.min.js'
+    - node_modules/
+    - venv/
+  web:
+    enabled: false
+    target: http://localhost:8000
+    max_pages: 50
+    timeout: 10
+  mitm:
+    enabled: false
+    traffic_file: ./mitm_traffic.ndjson
+    port: 8080
+  runtime:
+    enabled: false
+rag:
+  enabled: true
+  model: gemma3:1b
+  mode: graph
+output:
+  audit_report: audit_report.json
+  graph_file: knowledge_graph.gpickle
+  database: security_audit.db

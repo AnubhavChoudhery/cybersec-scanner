@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cybersec-scanner"
-version = "0.1.0"
+version = "0.1.1"
 description = "A comprehensive security scanner and RAG-based vulnerability analyzer"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -56,7 +56,13 @@ Issues = "https://github.com/AnubhavChoudhery/cybersec-scanner/issues"
 cybersec-scanner = "cybersec_scanner.cli.main:main"
 
 [tool.setuptools]
-packages = ["cybersec_scanner"]
+packages = [
+    "cybersec_scanner",
+    "cybersec_scanner.cli",
+    "cybersec_scanner.database",
+    "cybersec_scanner.rag",
+    "cybersec_scanner.scanners",
+]
 
 [tool.setuptools.package-data]
 cybersec_scanner = [

@@ -1,0 +1,2 @@
+[console_scripts]
+cybersec-scanner = cybersec_scanner.cli.main:main

@@ -36,7 +36,13 @@ setup(
         "Source": "https://github.com/AnubhavChoudhery/cybersec-scanner",
         "Documentation": "https://github.com/AnubhavChoudhery/cybersec-scanner/blob/main/README.md",
     },
-    packages=find_packages(exclude=["tests", "tests.*", "examples"]),
+    packages=[
+        "cybersec_scanner",
+        "cybersec_scanner.cli",
+        "cybersec_scanner.database",
+        "cybersec_scanner.rag",
+        "cybersec_scanner.scanners",
+    ],
     package_data={
         "cybersec_scanner": [
             "database/schema.sql",
