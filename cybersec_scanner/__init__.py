@@ -307,82 +307,85 @@ def scan_all(config_file: str = None, **kwargs):
         print("      Add inject_mitm_proxy_advanced() as FIRST line in main.py")
         print("[ACTION REQUIRED] Start your backend app now, then press Ctrl+C when done testing\n")
         
+        # Get traffic file from config, or use well-known temp location
         traffic_file = mitm_config.get("traffic_file") or config.get("mitm_traffic")
         
+        from pathlib import Path
+        from .scanners import parse_mitm_traffic
+        from .scanners.inject_mitm_proxy import DEFAULT_TRAFFIC_FILE
+        import time
+        
+        # Use default temp location if no path specified
         if traffic_file:
-            from pathlib import Path
-            from .scanners import parse_mitm_traffic
-            import time
-            
-            traffic_path = Path(traffic_file).resolve()  # Convert to absolute path
-            
-            # Clear traffic file for fresh run
-            try:
-                traffic_path.parent.mkdir(parents=True, exist_ok=True)
-                traffic_path.write_text("")
-                print(f"[OK] Cleared traffic file: {traffic_path}")
-            except Exception as e:
-                print(f"[WARN] Could not clear traffic file: {e}")
-            
-            # Start mitmproxy addon for additional traffic capture
-            try:
-                from .scanners.network_scanner import run_mitm_dump, stop_mitm_dump
-                
-                proxy_port = mitm_config.get("port", config.get("mitm_port", 8082))
-                proc, addon_results_path = run_mitm_dump(port=proxy_port, duration=None)
-                
-                if proc is None:
-                    print(f"[ERROR] MITM proxy failed to launch: {addon_results_path}")
-                    results["mitm"] = []
-                else:
-                    print(f"[!] MITM running on port {proxy_port} — exercise your app then press Ctrl+C")
-                    try:
-                        # Wait for user to exercise the app
-                        while proc.poll() is None:
-                            time.sleep(1)
-                    except KeyboardInterrupt:
-                        print("\n[INFO] Stopping MITM proxy...")
-                    
-                    # Stop the proxy and get addon results
-                    addon_results = stop_mitm_dump(proc, addon_results_path)
-                    
-                    # Parse injector traffic file (from inject_mitm_proxy.py)
-                    if traffic_path.exists() and traffic_path.stat().st_size > 0:
-                        traffic_data = parse_mitm_traffic(traffic_path)
-                        
-                        # Combine findings from both sources
-                        all_mitm_findings = traffic_data["security_findings"] + traffic_data["traffic_findings"]
-                        
-                        # Add addon findings if available
-                        if isinstance(addon_results, dict) and "findings" in addon_results:
-                            all_mitm_findings.extend(addon_results["findings"])
-                        
-                        results["mitm"] = all_mitm_findings
-                        
-                        print(f"\n[OK] Injector traffic parsed")
-                        print(f"  Proxied: {traffic_data['proxied']}")
-                        print(f"  Bypassed: {traffic_data['bypassed']}")
-                        print(f"  Security issues: {len(traffic_data['security_findings'])}")
-                        
-                        if isinstance(addon_results, dict) and "error" not in addon_results:
-                            print(f"[OK] MITM addon complete")
-                            print(f"  Requests: {addon_results.get('requests', 0)}")
-                            print(f"  Responses: {addon_results.get('responses', 0)}")
-                    else:
-                        print(f"[WARN] Traffic file empty - ensure backend app has inject_mitm_proxy_advanced() imported")
-                        results["mitm"] = []
-                        
-            except ImportError:
-                print(f"[ERROR] network_scanner module not found - mitmproxy may not be installed")
-                print(f"        Install with: pip install mitmproxy")
-                results["mitm"] = []
-            except Exception as e:
-                print(f"[ERROR] MITM workflow failed: {e}")
-                import traceback
-                traceback.print_exc()
-                results["mitm"] = []
+            traffic_path = Path(traffic_file).resolve()
         else:
-            print(f"  [mitm] Skipped - no traffic file specified")
+            traffic_path = DEFAULT_TRAFFIC_FILE
+            print(f"[INFO] Using default traffic file: {traffic_path}")
+        
+        # Clear traffic file for fresh run
+        try:
+            traffic_path.parent.mkdir(parents=True, exist_ok=True)
+            traffic_path.write_text("")
+            print(f"[OK] Cleared traffic file: {traffic_path}")
+        except Exception as e:
+            print(f"[WARN] Could not clear traffic file: {e}")
+        
+        # Start mitmproxy addon for additional traffic capture
+        try:
+            from .scanners.network_scanner import run_mitm_dump, stop_mitm_dump
+            
+            proxy_port = mitm_config.get("port", config.get("mitm_port", 8082))
+            proc, addon_results_path = run_mitm_dump(port=proxy_port, duration=None)
+            
+            if proc is None:
+                print(f"[ERROR] MITM proxy failed to launch: {addon_results_path}")
+                results["mitm"] = []
+            else:
+                print(f"[!] MITM running on port {proxy_port} — exercise your app then press Ctrl+C")
+                try:
+                    # Wait for user to exercise the app
+                    while proc.poll() is None:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    print("\n[INFO] Stopping MITM proxy...")
+                
+                # Stop the proxy and get addon results
+                addon_results = stop_mitm_dump(proc, addon_results_path)
+                
+                # Parse injector traffic file (from inject_mitm_proxy.py)
+                if traffic_path.exists() and traffic_path.stat().st_size > 0:
+                    traffic_data = parse_mitm_traffic(traffic_path)
+                    
+                    # Combine findings from both sources
+                    all_mitm_findings = traffic_data["security_findings"] + traffic_data["traffic_findings"]
+                    
+                    # Add addon findings if available
+                    if isinstance(addon_results, dict) and "findings" in addon_results:
+                        all_mitm_findings.extend(addon_results["findings"])
+                    
+                    results["mitm"] = all_mitm_findings
+                    
+                    print(f"\n[OK] Injector traffic parsed")
+                    print(f"  Proxied: {traffic_data['proxied']}")
+                    print(f"  Bypassed: {traffic_data['bypassed']}")
+                    print(f"  Security issues: {len(traffic_data['security_findings'])}")
+                    
+                    if isinstance(addon_results, dict) and "error" not in addon_results:
+                        print(f"[OK] MITM addon complete")
+                        print(f"  Requests: {addon_results.get('requests', 0)}")
+                        print(f"  Responses: {addon_results.get('responses', 0)}")
+                else:
+                    print(f"[WARN] Traffic file empty - ensure backend app has inject_mitm_proxy_advanced() imported")
+                    results["mitm"] = []
+                    
+        except ImportError:
+            print(f"[ERROR] network_scanner module not found - mitmproxy may not be installed")
+            print(f"        Install with: pip install mitmproxy")
+            results["mitm"] = []
+        except Exception as e:
+            print(f"[ERROR] MITM workflow failed: {e}")
+            import traceback
+            traceback.print_exc()
             results["mitm"] = []
     
     # Web scan

@@ -306,7 +306,7 @@ def main():
     scan_parser.add_argument("--root", default=".", help="Root directory for git scan")
     scan_parser.add_argument("--target", help="Target URL for web scan")
     scan_parser.add_argument("--max-commits", type=int, default=50, help="Max git commits to scan")
-    scan_parser.add_argument("--mitm-traffic", help="MITM traffic file path")
+    scan_parser.add_argument("--mitm-traffic", help="MITM traffic file path (default: temp dir auto-shared with backend)")
     scan_parser.add_argument("--enable-rag", action="store_true", help="Build knowledge graph after scan")
     scan_parser.set_defaults(func=cmd_scan)
     
@@ -363,7 +363,7 @@ def main():
     # MITM proxy start command
     proxy_parser = subparsers.add_parser("start-proxy", help="Start MITM proxy with auto-patching")
     proxy_parser.add_argument("--port", type=int, default=8082, help="Proxy listen port")
-    proxy_parser.add_argument("--traffic-file", default="mitm_traffic.ndjson", help="Traffic log file path")
+    proxy_parser.add_argument("--traffic-file", help="Traffic log file path (default: temp dir auto-shared)")
     proxy_parser.set_defaults(func=cmd_start_proxy)
     
     args = parser.parse_args()

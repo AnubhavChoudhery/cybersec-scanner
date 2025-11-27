@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cybersec-scanner"
-version = "1.0.2"
+version = "1.0.3"
 description = "A comprehensive security scanner and RAG-based vulnerability analyzer"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,6 +32,7 @@ dependencies = [
     "pyyaml>=6.0",
     "requests>=2.28.0",
     "ollama>=0.1.0",
+    "colorama>=0.4.0",
     "mitmproxy>=10.0.0",
     "playwright>=1.40.0",
     "sentence-transformers>=2.0.0",

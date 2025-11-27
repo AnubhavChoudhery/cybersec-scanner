@@ -13,6 +13,11 @@ from .web_crawler import LocalCrawler, process_crawler_findings
 from .browser_scanner import playwright_inspect, process_browser_findings
 from .network_scanner import run_mitm_dump, stop_mitm_dump
 from .mitm_processor import parse_mitm_traffic
+from .inject_mitm_proxy import (
+    inject_mitm_proxy_advanced,
+    DEFAULT_TRAFFIC_FILE,
+    CYBERSEC_TEMP_DIR,
+)
 
 __all__ = [
     'scan_git_history',
@@ -23,4 +28,7 @@ __all__ = [
     'run_mitm_dump',
     'stop_mitm_dump',
     'parse_mitm_traffic',
+    'inject_mitm_proxy_advanced',
+    'DEFAULT_TRAFFIC_FILE',
+    'CYBERSEC_TEMP_DIR',
 ]

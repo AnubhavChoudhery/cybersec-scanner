@@ -32,6 +32,7 @@ import sys
 import ssl
 import json
 import time
+import tempfile
 import threading
 from pathlib import Path
 import logging
@@ -45,9 +46,13 @@ MITM_PROXY_URL = f"http://127.0.0.1:{MITM_PROXY_PORT}"
 # Always enabled - full proxy mode with selective bypass
 ENABLE_MITM = True
 
+# Well-known temp directory for traffic file - shared between scanner and backend
+CYBERSEC_TEMP_DIR = Path(tempfile.gettempdir()) / "cybersec_scanner"
+DEFAULT_TRAFFIC_FILE = CYBERSEC_TEMP_DIR / "mitm_traffic.ndjson"
+
 # Traffic log can be overridden via environment variable or function parameter
-_default_traffic_log = Path(__file__).parent / "mitm_traffic.ndjson"
-TRAFFIC_LOG = Path(os.getenv("MITM_TRAFFIC_FILE", str(_default_traffic_log)))
+# Default now uses temp directory so both scanner and backend find the same file
+TRAFFIC_LOG = Path(os.getenv("MITM_TRAFFIC_FILE", str(DEFAULT_TRAFFIC_FILE)))
 _lock = threading.Lock()
 
 # Simple terminal logging for visibility
@@ -797,17 +802,21 @@ def inject_mitm_proxy_advanced(traffic_file: Optional[str] = None):
     
     Args:
         traffic_file: Optional path to traffic log file. If not provided,
-                     uses MITM_TRAFFIC_FILE env var or default location.
+                     uses well-known temp directory that scanner also uses.
+                     Location: {tempdir}/cybersec_scanner/mitm_traffic.ndjson
     
     Environment Variables:
         MITM_PROXY_PORT: Proxy port (default: 8082)
-        MITM_TRAFFIC_FILE: Traffic log file path
+        MITM_TRAFFIC_FILE: Traffic log file path (overrides default)
     """
     global TRAFFIC_LOG
     
-    # Override traffic log location if specified
+    # Use provided path, env var, or default temp location
     if traffic_file:
         TRAFFIC_LOG = Path(traffic_file).resolve()
+    else:
+        # Use well-known temp location (same as scanner)
+        TRAFFIC_LOG = Path(os.getenv("MITM_TRAFFIC_FILE", str(DEFAULT_TRAFFIC_FILE)))
     
     # Clear/create NDJSON traffic log on startup
     try:

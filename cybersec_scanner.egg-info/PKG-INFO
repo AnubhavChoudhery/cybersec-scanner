@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: cybersec-scanner
-Version: 1.0.2
+Version: 1.0.3
 Summary: A comprehensive security scanner and RAG-based vulnerability analyzer
 Home-page: https://github.com/AnubhavChoudhery/cybersec-scanner
 Author: CyberSec Team
@@ -27,6 +27,7 @@ Requires-Dist: networkx>=3.0
 Requires-Dist: pyyaml>=6.0
 Requires-Dist: requests>=2.28.0
 Requires-Dist: ollama>=0.1.0
+Requires-Dist: colorama>=0.4.0
 Requires-Dist: mitmproxy>=10.0.0
 Requires-Dist: playwright>=1.40.0
 Requires-Dist: sentence-transformers>=2.0.0
