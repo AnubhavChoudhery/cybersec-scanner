@@ -107,7 +107,11 @@ class KnowledgeGraph:
     @staticmethod
     def _make_finding_id(f: Dict[str, Any]) -> str:
         """Create deterministic ID from finding data."""
-        key = (f.get("type", "") + "|" + f.get("summary", "") + "|" + (f.get("snippet") or ""))
+        key = (
+            (f.get("type") or "") + "|" + 
+            (f.get("summary") or "") + "|" + 
+            (f.get("snippet") or "")
+        )
         return hashlib.sha1(key.encode("utf-8")).hexdigest()
 
     @staticmethod

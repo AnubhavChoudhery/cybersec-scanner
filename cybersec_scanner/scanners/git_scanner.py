@@ -177,6 +177,7 @@ def scan_git_history(root, max_commits=100):
                                     snippet = match.group(0)[:200]
                                     finding = {
                                         "type": "git_pattern",
+                                        "summary": f"{name} in git history",
                                         "commit": commit[:12],
                                         "path": file_path,
                                         "pattern": name,

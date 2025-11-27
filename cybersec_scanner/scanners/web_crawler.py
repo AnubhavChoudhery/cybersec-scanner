@@ -533,8 +533,10 @@ def process_crawler_findings(crawler_findings):
     return [
         {
             "type": "crawler_issue",
+            "summary": f.get("description") or f.get("type", "Web finding"),
             "url": f.get("url"),
             "description": f.get("description"),
+            "severity": f.get("severity", "MEDIUM"),
             "details": f
         }
         for f in real_issues
