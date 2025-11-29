@@ -3,6 +3,7 @@
 [![Tests](https://github.com/AnubhavChoudhery/cybersec-scanner/workflows/Tests/badge.svg)](https://github.com/AnubhavChoudhery/cybersec-scanner/actions)
 [![Python](https://img.shields.io/pypi/pyversions/cybersec-scanner.svg)](https://pypi.org/project/cybersec-scanner/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/cybersec-scanner?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/cybersec-scanner)
 
 A comprehensive, modular security scanning toolkit for detecting secrets, vulnerabilities, and misconfigurations in Git repositories, web applications, and browser extensions. Features multi-scanner architecture, RAG-powered analysis, and both SDK and CLI interfaces.
 
